@@ -1,6 +1,7 @@
 import { Input } from "../ui/input";
 import { FormField } from "../shared/FormField";
 import { Panel } from "../shared/Panel";
+import { IS_ANDROID_BUILD } from "../../lib/platform";
 import type { AppConfig, ConfigResponse } from "../../types";
 
 interface Props {
@@ -14,13 +15,16 @@ export function PackageTab({ form, snapshot, onChange }: Props) {
     <div className="grid max-w-2xl gap-3">
       <Panel title="Package source">
         <div className="grid gap-3">
-          <FormField label="Package directory">
-            <Input
-              value={form.package.dir}
-              onChange={(e) => onChange((d) => void (d.package.dir = e.target.value))}
-              spellCheck={false}
-            />
-          </FormField>
+          {/* The Android app manages the package cache directory natively. */}
+          {!IS_ANDROID_BUILD && (
+            <FormField label="Package directory">
+              <Input
+                value={form.package.dir}
+                onChange={(e) => onChange((d) => void (d.package.dir = e.target.value))}
+                spellCheck={false}
+              />
+            </FormField>
+          )}
           <FormField label="Manifest URL">
             <Input
               value={form.package.manifestUrl}

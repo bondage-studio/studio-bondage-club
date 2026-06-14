@@ -181,7 +181,7 @@ export function Window({
       <header
         className={cn(
           "flex h-8 shrink-0 select-none items-center justify-between border-b bg-muted pl-3 pr-1",
-          !popped && "cursor-move"
+          !popped && "cursor-move touch-none"
         )}
         onPointerDown={popped ? undefined : onTitlePointerDown}
       >
@@ -254,7 +254,7 @@ export function Window({
       <div
         onPointerDown={onResizePointerDown}
         title="Resize"
-        className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize"
+        className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize touch-none"
         style={{
           background:
             "linear-gradient(135deg, transparent 0 50%, hsl(var(--muted-foreground) / 0.45) 50% 60%, transparent 60% 70%, hsl(var(--muted-foreground) / 0.45) 70% 80%, transparent 80%)"

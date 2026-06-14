@@ -105,12 +105,15 @@ tasks.register('buildWebAssets', Exec) {
     inputs.dir(new File(webDir, 'src'))
     inputs.file(new File(webDir, 'package.json'))
     inputs.file(new File(webDir, 'vite.config.ts'))
+    inputs.file(new File(webDir, '.env.android'))
     outputs.dir(new File(webDir, 'dist'))
+    // build:android selects the Android-specific bundle (--mode android), which
+    // strips desktop-only config and adds Android-only UI.
     def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
     if (isWindows) {
-        commandLine 'cmd', '/c', 'npm install --no-audit --no-fund && npm run build'
+        commandLine 'cmd', '/c', 'npm install --no-audit --no-fund && npm run build:android'
     } else {
-        commandLine 'sh', '-c', 'npm install --no-audit --no-fund && npm run build'
+        commandLine 'sh', '-c', 'npm install --no-audit --no-fund && npm run build:android'
     }
 }
 

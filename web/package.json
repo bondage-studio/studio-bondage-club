@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:android": "vite --host 127.0.0.1 --mode android",
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "build:android": "tsc --noEmit -p tsconfig.app.json && vite build --mode android",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

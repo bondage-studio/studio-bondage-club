@@ -1,3 +1,5 @@
+import { isAndroidRuntime } from "./lib/platform";
+
 interface StudioBootstrap {
   homepageSourcePath: string;
   upstreamBase: string;
@@ -52,8 +54,6 @@ export async function restoreOriginalHomepage(bootstrap: StudioBootstrap | null)
   }
 
   try {
-    installViewportTouchFixes();
-
     setStatus(bootstrap, "loading", "Registering service worker.");
     const useServiceWorkerRoutes = await registerServiceWorker(bootstrap);
     installMediaProxy();
@@ -102,7 +102,7 @@ async function registerServiceWorker(bootstrap: StudioBootstrap) {
   // natively via shouldInterceptRequest and tags its user agent, so the service
   // worker is redundant there. Returning false routes through the same
   // parse-time URL-rewriting fallback used when service workers are unavailable.
-  if (navigator.userAgent.includes("StudioBC-Android")) {
+  if (isAndroidRuntime()) {
     setStatus(bootstrap, "loading", "Native WebView interception active; service worker disabled.");
     return false;
   }
@@ -241,19 +241,6 @@ function reconnectGameServer() {
       console.error("Studio: failed to reconnect game socket", error);
     }
   }
-}
-
-function installViewportTouchFixes() {
-  if (document.getElementById("studio-touch-fixes")) {
-    return;
-  }
-  const style = document.createElement("style");
-  style.id = "studio-touch-fixes";
-  style.textContent = `
-    html, body { overscroll-behavior: none; }
-    canvas { touch-action: none; }
-  `;
-  document.head.appendChild(style);
 }
 
 function installMediaProxy() {

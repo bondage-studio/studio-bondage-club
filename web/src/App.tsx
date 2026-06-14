@@ -6,6 +6,7 @@ import {
   Server,
   Settings,
   SlidersHorizontal,
+  Smartphone,
   Wifi
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -19,6 +20,7 @@ import { CacheTab } from "./components/tabs/CacheTab";
 import { ConnectionTab } from "./components/tabs/ConnectionTab";
 import { GameServerTab } from "./components/tabs/GameServerTab";
 import { GameSettingsTab } from "./components/tabs/GameSettingsTab";
+import { AndroidTab } from "./components/tabs/AndroidTab";
 import { ModeTab } from "./components/tabs/ModeTab";
 import { PackageTab } from "./components/tabs/PackageTab";
 import { Button } from "./components/ui/button";
@@ -28,6 +30,7 @@ import { Window } from "./components/ui/window";
 import { copyScope, scopeSlice, tierMessages } from "./config/scope";
 import { useSSE } from "./hooks/useSSE";
 import { cn, errorMessage } from "./lib/utils";
+import { IS_ANDROID_BUILD } from "./lib/platform";
 import { getGameServerMode, setGameServerMode, type GameServerMode } from "./originalPage";
 import type {
   AppConfig,
@@ -38,9 +41,20 @@ import type {
   StoreConfig
 } from "./types";
 
-type PanelTab = ConfigScopeName;
+type PanelTab = ConfigScopeName | "android";
 
-const pages: { id: PanelTab; icon: ReactNode; label: string; description: string }[] = [
+type PageDef = {
+  id: PanelTab;
+  icon: ReactNode;
+  label: string;
+  description: string;
+  // Hidden in the Android build (native app owns the whole tab).
+  androidHidden?: boolean;
+  // Only present in the Android build.
+  androidOnly?: boolean;
+};
+
+const allPages: PageDef[] = [
   {
     id: "connection",
     icon: <Wifi size={16} />,
@@ -76,8 +90,20 @@ const pages: { id: PanelTab; icon: ReactNode; label: string; description: string
     icon: <Package size={16} />,
     label: "Package",
     description: "Package cache directory and manifest source."
+  },
+  {
+    id: "android",
+    icon: <Smartphone size={16} />,
+    label: "Android",
+    description: "Settings specific to the Android app.",
+    androidOnly: true
   }
 ];
+
+// Desktop build drops androidOnly tabs; Android build drops androidHidden tabs.
+const pages = allPages.filter((p) =>
+  IS_ANDROID_BUILD ? !p.androidHidden : !p.androidOnly
+);
 
 function App() {
   const [snapshot, setSnapshot] = useState<ConfigResponse | null>(null);
@@ -139,8 +165,8 @@ function App() {
     setGameServerMode(mode);
   }
 
-  function sectionDirty(scope: ConfigScopeName): boolean {
-    if (!snapshot || !form) return false;
+  function sectionDirty(scope: PanelTab): boolean {
+    if (scope === "android" || !snapshot || !form) return false;
     return (
       JSON.stringify(scopeSlice(form, scope)) !==
       JSON.stringify(scopeSlice(snapshot.config, scope))
@@ -433,18 +459,20 @@ function App() {
                   {activePage.description}
                 </p>
               </div>
-              <SectionBar
-                dirty={sectionDirty(tab)}
-                busy={busy}
-                onRefresh={() => void refreshScope(tab)}
-                onSave={
-                  tab === "cache"
-                    ? handleSaveCache
-                    : tab === "gameserver"
-                      ? handleSaveGameServer
-                      : () => void saveScope(tab)
-                }
-              />
+              {tab !== "android" && (
+                <SectionBar
+                  dirty={sectionDirty(tab)}
+                  busy={busy}
+                  onRefresh={() => void refreshScope(tab)}
+                  onSave={
+                    tab === "cache"
+                      ? handleSaveCache
+                      : tab === "gameserver"
+                        ? handleSaveGameServer
+                        : () => void saveScope(tab)
+                  }
+                />
+              )}
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
@@ -491,6 +519,7 @@ function App() {
                     {tab === "package" && (
                       <PackageTab form={form} snapshot={snapshot} onChange={updateConfig} />
                     )}
+                    {IS_ANDROID_BUILD && tab === "android" && <AndroidTab />}
                   </>
                 )}
               </div>

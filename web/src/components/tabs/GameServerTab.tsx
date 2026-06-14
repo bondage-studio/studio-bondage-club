@@ -3,6 +3,7 @@ import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { FormField } from "../shared/FormField";
 import { Panel } from "../shared/Panel";
+import { IS_ANDROID_BUILD } from "../../lib/platform";
 import type { GameServerMode } from "../../originalPage";
 import type { AppConfig, GameServerStatus } from "../../types";
 
@@ -34,21 +35,24 @@ export function GameServerTab({ form, serverMode, gameStatus, onSwitchMode, onCh
           />
         </div>
       </Panel>
-      <Panel title="Storage">
-        <FormField label="Account storage path">
-          <Input
-            value={form.gameServerStoragePath}
-            placeholder={defaultDir}
-            spellCheck={false}
-            onChange={(e) => onChange((d) => void (d.gameServerStoragePath = e.target.value))}
-          />
-        </FormField>
-        <p className="mt-2.5 text-xs text-muted-foreground">
-          Where the embedded server keeps its account database. Leave empty to use the default{" "}
-          <code>{defaultDir}</code>. Saving a new location applies live — you'll be asked whether to
-          migrate the existing accounts or start fresh; live game sockets reconnect either way.
-        </p>
-      </Panel>
+      {/* The Android app keeps the account database in app-internal storage. */}
+      {!IS_ANDROID_BUILD && (
+        <Panel title="Storage">
+          <FormField label="Account storage path">
+            <Input
+              value={form.gameServerStoragePath}
+              placeholder={defaultDir}
+              spellCheck={false}
+              onChange={(e) => onChange((d) => void (d.gameServerStoragePath = e.target.value))}
+            />
+          </FormField>
+          <p className="mt-2.5 text-xs text-muted-foreground">
+            Where the embedded server keeps its account database. Leave empty to use the default{" "}
+            <code>{defaultDir}</code>. Saving a new location applies live — you'll be asked whether to
+            migrate the existing accounts or start fresh; live game sockets reconnect either way.
+          </p>
+        </Panel>
+      )}
       <Panel
         title="Live status"
         action={

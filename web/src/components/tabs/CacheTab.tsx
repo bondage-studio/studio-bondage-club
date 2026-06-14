@@ -7,6 +7,7 @@ import { Panel } from "../shared/Panel";
 import { StoreCard } from "../cache/StoreCard";
 import { CacheMaintenance } from "../cache/CacheMaintenance";
 import { formatBytes } from "../../lib/utils";
+import { IS_ANDROID_BUILD } from "../../lib/platform";
 import type { AppConfig, StatsEvent } from "../../types";
 
 interface Props {
@@ -88,13 +89,16 @@ export function CacheTab({
 
       <Panel title="Base configuration">
         <div className="grid gap-3">
-          <FormField label="Cache directory">
-            <Input
-              value={form.cache.dir}
-              onChange={(e) => onChange((d) => void (d.cache.dir = e.target.value))}
-              spellCheck={false}
-            />
-          </FormField>
+          {/* The Android app manages cache storage in an app-internal path. */}
+          {!IS_ANDROID_BUILD && (
+            <FormField label="Cache directory">
+              <Input
+                value={form.cache.dir}
+                onChange={(e) => onChange((d) => void (d.cache.dir = e.target.value))}
+                spellCheck={false}
+              />
+            </FormField>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Default TTL (s)">
               <Input
