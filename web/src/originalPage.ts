@@ -52,6 +52,8 @@ export async function restoreOriginalHomepage(bootstrap: StudioBootstrap | null)
   }
 
   try {
+    installViewportTouchFixes();
+
     setStatus(bootstrap, "loading", "Registering service worker.");
     const useServiceWorkerRoutes = await registerServiceWorker(bootstrap);
     installMediaProxy();
@@ -239,6 +241,19 @@ function reconnectGameServer() {
       console.error("Studio: failed to reconnect game socket", error);
     }
   }
+}
+
+function installViewportTouchFixes() {
+  if (document.getElementById("studio-touch-fixes")) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = "studio-touch-fixes";
+  style.textContent = `
+    html, body { overscroll-behavior: none; }
+    canvas { touch-action: none; }
+  `;
+  document.head.appendChild(style);
 }
 
 function installMediaProxy() {

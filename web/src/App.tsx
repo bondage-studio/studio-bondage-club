@@ -2,6 +2,7 @@ import {
   Gamepad2,
   HardDrive,
   Package,
+  RotateCcw,
   Server,
   Settings,
   SlidersHorizontal,
@@ -9,7 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { clearCache, loadConfig, loadGameServerStatus, saveConfigScope } from "./api";
+import { clearCache, loadConfig, loadGameServerStatus, resetConfig, saveConfigScope } from "./api";
 import { CacheMigrateDialog } from "./components/cache/CacheMigrateDialog";
 import { RuleEditor } from "./components/cache/RuleEditor";
 import { StoreEditor } from "./components/cache/StoreEditor";
@@ -20,6 +21,8 @@ import { GameServerTab } from "./components/tabs/GameServerTab";
 import { GameSettingsTab } from "./components/tabs/GameSettingsTab";
 import { ModeTab } from "./components/tabs/ModeTab";
 import { PackageTab } from "./components/tabs/PackageTab";
+import { Button } from "./components/ui/button";
+import { useConfirm } from "./components/ui/confirm";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Window } from "./components/ui/window";
 import { copyScope, scopeSlice, tierMessages } from "./config/scope";
@@ -85,6 +88,7 @@ function App() {
   const [open, setOpen] = useState(() => localStorage.getItem("studio-panel-open") !== "false");
   const [tab, setTab] = useState<PanelTab>("connection");
 
+  const confirm = useConfirm();
   const { stats: sseStats, connected } = useSSE();
 
   const [storeEditorOpen, setStoreEditorOpen] = useState(false);
@@ -238,6 +242,26 @@ function App() {
     }
   }
 
+  async function handleResetConfig() {
+    const ok = await confirm({
+      title: "Reset to defaults?",
+      body: "This overwrites your current configuration with the built-in defaults and reloads the app.",
+      confirmLabel: "Reset & restart",
+      destructive: true
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError("");
+    try {
+      await resetConfig();
+      setMessage("Configuration reset — restarting…");
+      window.location.reload();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
   function updateConfig(mutator: (draft: AppConfig) => void) {
     setForm((current) => {
       if (!current) return current;
@@ -337,6 +361,17 @@ function App() {
           <span className="text-muted-foreground">Each section saves independently.</span>
         )}
       </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        disabled={busy || !snapshot}
+        onClick={() => void handleResetConfig()}
+        title="Reset all settings to defaults and restart"
+      >
+        <RotateCcw size={13} />
+        Reset to defaults
+      </Button>
     </footer>
   );
 

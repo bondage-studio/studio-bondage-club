@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { ConfirmProvider } from "./components/ui/confirm";
 import { readStudioBootstrap, restoreOriginalHomepage } from "./originalPage";
 import { ShadowContext } from "./shadow-context";
 import styles from "./styles.css?inline";
@@ -54,7 +55,9 @@ shadow.append(rootElement);
 createRoot(rootElement).render(
   <React.StrictMode>
     <ShadowContext.Provider value={rootElement}>
-      <App />
+      <ConfirmProvider>
+        <App />
+      </ConfirmProvider>
     </ShadowContext.Provider>
   </React.StrictMode>
 );

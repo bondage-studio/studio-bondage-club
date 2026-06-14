@@ -35,6 +35,15 @@ export function loadConfig(): Promise<ConfigResponse> {
 }
 
 /**
+ * Reset the entire configuration back to the built-in defaults. The server
+ * persists and hot-applies them; the caller typically reloads the app afterwards
+ * so the game restarts against the fresh config.
+ */
+export function resetConfig(): Promise<ConfigResponse> {
+  return request<ConfigResponse>("/api/config/reset", { method: "POST" });
+}
+
+/**
  * Save a single config scope (per-section). The server merges the slice into the
  * live config, validates the whole, and fires reload work only for this scope.
  * `migrate` is honoured by the cache scope (cache dir change) and the gameserver

@@ -302,6 +302,12 @@ asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const Sta
         } else {
             co_await method_not_allowed(w);
         }
+    } else if (path == "/api/config/reset") {
+        if (req.method == "POST") {
+            co_await handle_reset_config(w);
+        } else {
+            co_await method_not_allowed(w);
+        }
     } else if (path.rfind("/api/config/", 0) == 0) {
         if (req.method == "PUT") {
             co_await handle_put_config_scope(req, w, path.substr(std::string("/api/config/").size()));
@@ -529,6 +535,39 @@ asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter&
     resp["updateTier"] = static_cast<int>(tier);
     resp["restartRequired"] = updated->cfg.server.address() != active_address_;
     resp["configPath"] = store_.path().string();
+    co_await write_json(w, 200, resp);
+}
+
+// Restore the whole config to default_config() (the same shape a fresh install
+// generates) and persist + hot-apply it. The directory fields are regenerated
+// from the platform paths in force on this process, so the reset keeps using the
+// same cache/config locations. Live scopes apply immediately; a listener-address
+// change is reported via restartRequired so the host can restart to rebind.
+asio::awaitable<void> App::handle_reset_config(ResponseWriter& w) {
+    config::Config def = config::normalize(config::default_config());
+
+    std::string error_msg;
+    bool failed = false;
+    try {
+        def.validate();
+        apply_config(def, /*only_scope=*/"", /*migrate_cache=*/false);
+    } catch (const std::exception& e) {
+        error_msg = e.what();
+        failed = true;
+    }
+    if (failed) {
+        co_await write_error(w, 500, error_msg);
+        co_return;
+    }
+
+    auto updated = snapshot();
+    cache::Stats stats = co_await cache_stats();
+    ordered_json resp;
+    resp["config"] = updated->cfg;
+    resp["status"] = status_json(updated->provider->status());
+    resp["cache"] = stats_json(stats);
+    resp["configPath"] = store_.path().string();
+    resp["restartRequired"] = updated->cfg.server.address() != active_address_;
     co_await write_json(w, 200, resp);
 }
 

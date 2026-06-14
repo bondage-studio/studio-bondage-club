@@ -50,6 +50,7 @@ private:
     boost::asio::awaitable<void> handle_put_config(Request& req, ResponseWriter& w);
     boost::asio::awaitable<void> handle_put_config_scope(Request& req, ResponseWriter& w,
                                                          const std::string& scope_name);
+    boost::asio::awaitable<void> handle_reset_config(ResponseWriter& w);
     boost::asio::awaitable<void> handle_sse(ResponseWriter& w);
     boost::asio::awaitable<void> handle_get_homepage(Request& req, ResponseWriter& w);
 
