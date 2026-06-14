@@ -32,6 +32,24 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
       "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-windows-static" }
     },
+    {
+      "name": "static-windows-arm64",
+      "inherits": "static",
+      "displayName": "Static — Windows ARM64 (arm64-windows-static: static deps + static CRT)",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": { "VCPKG_TARGET_TRIPLET": "arm64-windows-static" }
+    },
+
+    {
+      "name": "musl-static",
+      "inherits": "static",
+      "displayName": "Fully static — musl/Linux (libc + OpenSSL linked statically; self-contained, runs on any distro)",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "SBC_FULLY_STATIC": "ON",
+        "VCPKG_MANIFEST_FEATURES": "vendored-openssl"
+      }
+    },
 
     {
       "name": "dynamic",
@@ -64,6 +82,8 @@
     { "name": "debug", "configurePreset": "debug" },
     { "name": "static", "configurePreset": "static" },
     { "name": "static-windows", "configurePreset": "static-windows" },
+    { "name": "static-windows-arm64", "configurePreset": "static-windows-arm64" },
+    { "name": "musl-static", "configurePreset": "musl-static" },
     { "name": "dynamic", "configurePreset": "dynamic" },
     { "name": "dynamic-windows", "configurePreset": "dynamic-windows" },
     { "name": "system", "configurePreset": "system" }

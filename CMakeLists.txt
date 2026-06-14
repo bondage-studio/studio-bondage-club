@@ -33,6 +33,11 @@ option(SBC_BUILD_TESTS   "Build unit tests" ON)
 # Note: macOS has no static libSystem, so this is a no-op on Apple platforms.
 option(SBC_STATIC_RUNTIME "Statically link the C/C++ runtime (libstdc++/libgcc, MSVC CRT)" OFF)
 
+# Fully static link, including libc itself (-static). Intended for musl/Linux,
+# where a static libc yields a self-contained binary that runs on any distro.
+# Not for glibc (static glibc is fragile) and a no-op on Apple/MSVC.
+option(SBC_FULLY_STATIC "Link the executable fully statically, including libc (-static; musl/Linux)" OFF)
+
 if(SBC_STATIC_RUNTIME AND MSVC)
   # MultiThreaded[Debug]  → /MT[d]  (static CRT)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -124,6 +129,11 @@ endif()
 function(sbc_apply_static_runtime target)
   if(SBC_STATIC_RUNTIME AND NOT MSVC AND NOT APPLE)
     target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++)
+  endif()
+  # Fully static (libc included). -static implies the runtime is static too, so
+  # it subsumes the flags above; harmless when both are set.
+  if(SBC_FULLY_STATIC AND NOT MSVC AND NOT APPLE)
+    target_link_options(${target} PRIVATE -static)
   endif()
 endfunction()
 if(NOT ANDROID)

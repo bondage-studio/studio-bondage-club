@@ -34,8 +34,15 @@ hot-reload uses lock-free snapshots in three tiers (live / recreate / restart).
 ## Building
 
 Requires CMake ≥ 3.21, a C++20 compiler, and [vcpkg](https://github.com/microsoft/vcpkg)
-for dependencies (`boost-beast`, `boost-asio`, `boost-url`, `openssl`,
-`leveldb`, `nlohmann-json`, `spdlog`).
+for dependencies (`boost-beast`, `boost-asio`, `boost-url`, `leveldb`,
+`nlohmann-json`, `spdlog`).
+
+OpenSSL is **not** built by vcpkg on desktop: Linux/macOS link the **system**
+OpenSSL dynamically (Windows uses Schannel and needs none; Android still builds
+OpenSSL via vcpkg). Install it first — `apt install libssl-dev` on Linux,
+`brew install openssl@3` on macOS — and on macOS pass
+`-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)` at configure time (the keg is
+not on the default search path).
 
 ```sh
 # One-time: bootstrap vcpkg (here vendored under ./.vcpkg)
@@ -69,8 +76,21 @@ cmake --preset static        # self-contained: deps + runtime linked statically
 cmake --preset dynamic       # shared C/C++ runtime
 ```
 
-On Windows pick the host-gated variants (`static-windows`, `dynamic-windows`),
-which also select the matching `x64-windows[-static]` triplet.
+On Windows pick the host-gated variants (`static-windows`, `static-windows-arm64`,
+`dynamic-windows`), which also select the matching `x64`/`arm64-windows[-static]`
+triplet.
+
+For a **fully self-contained Linux binary** (static libc + static OpenSSL, runs
+on any distro), build against musl in an Alpine environment:
+
+```sh
+cmake --preset musl-static     # -static + vendored-openssl feature
+cmake --build build/musl-static
+```
+
+This is the only flavour that bundles OpenSSL; every other desktop flavour links
+the system OpenSSL dynamically (see above). CI builds it inside an `alpine`
+container — see `.github/workflows/ci.yml`.
 
 See **[docs/BUILD.md](docs/BUILD.md)** for the full matrix, per-platform notes
 (incl. the macOS/glibc caveats), and how to verify the resulting binary.

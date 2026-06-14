@@ -10,7 +10,7 @@
     "boost-system",
     {
       "name": "openssl",
-      "platform": "!windows"
+      "platform": "android"
     },
     {
       "name": "bext-wintls",
@@ -19,5 +19,11 @@
     "leveldb",
     "nlohmann-json",
     "spdlog"
-  ]
+  ],
+  "features": {
+    "vendored-openssl": {
+      "description": "Build OpenSSL via vcpkg (static) instead of linking the system library. Enabled for fully-static musl/Linux builds; desktop glibc/macOS builds leave it off and use the system OpenSSL.",
+      "dependencies": [ "openssl" ]
+    }
+  }
 }

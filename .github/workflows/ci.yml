@@ -11,7 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # C++ server: build + unit tests across platforms and linkage flavours.
+  # C++ server: the default distribution flavour per platform, x64 + arm64.
+  #   Windows   fully static (static deps + static CRT, no OpenSSL: Schannel).
+  #   Linux     static vcpkg deps; the C/C++ runtime (libstdc++/libgcc, glibc)
+  #             and OpenSSL are the system's, linked dynamically. A fully-static
+  #             flavour is built separately against musl (see build-linux-musl).
+  #   macOS     static vcpkg deps + system OpenSSL (dynamic); libSystem is always
+  #             dynamic (Apple ships no static libc), so the runtime can't be static.
+  # arm64 is built natively on GitHub's ARM runners. Binaries are UPX-compressed
+  # where the format is supported (Linux/Windows); skipped on macOS.
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -19,12 +27,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: "Linux · default",   os: ubuntu-latest,  preset: default }
-          - { name: "Linux · static",    os: ubuntu-latest,  preset: static }
-          - { name: "macOS · default",   os: macos-latest,   preset: default }
-          - { name: "macOS · static",    os: macos-latest,   preset: static }
-          - { name: "Windows · dynamic", os: windows-latest, preset: default }
-          - { name: "Windows · static",  os: windows-latest, preset: static-windows }
+          - { name: "Linux x64",     os: ubuntu-latest,    preset: default,              slug: linux-x64 }
+          - { name: "Linux arm64",   os: ubuntu-24.04-arm, preset: default,              slug: linux-arm64 }
+          - { name: "macOS x64",     os: macos-13,         preset: default,              slug: macos-x64 }
+          - { name: "macOS arm64",   os: macos-latest,     preset: default,              slug: macos-arm64 }
+          - { name: "Windows x64",   os: windows-latest,   preset: static-windows,       slug: windows-x64,   msvc_arch: x64 }
+          - { name: "Windows arm64", os: windows-11-arm,   preset: static-windows-arm64, slug: windows-arm64, msvc_arch: arm64 }
 
     env:
       # Cache built vcpkg packages in the GitHub Actions cache (x-gha backend).
@@ -41,10 +49,13 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Install Ninja (Linux)
+      # Ninja for the generator; libssl-dev provides the system OpenSSL the
+      # binary links dynamically (vcpkg no longer builds OpenSSL off-Android).
+      - name: Install Ninja + OpenSSL (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libssl-dev
 
+      # macOS links the runner's preinstalled brew openssl@3 dynamically.
       - name: Install Ninja (macOS)
         if: runner.os == 'macOS'
         run: brew install ninja
@@ -54,9 +65,12 @@ jobs:
         run: choco install ninja --no-progress -y
 
       # Put cl.exe / the MSVC toolchain on PATH so the Ninja generator finds it.
+      # arch selects the x64 or ARM64 cross/native tools to match the runner.
       - name: Set up MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
       # Bootstrap vcpkg into ./.vcpkg at the manifest baseline, matching the
       # CMakePresets toolchain path. Manifest mode installs deps at configure time.
@@ -72,8 +86,16 @@ jobs:
             ./.vcpkg/bootstrap-vcpkg.sh -disableMetrics
           fi
 
+      # On macOS, point find_package(OpenSSL) at the brew keg (it's keg-only and
+      # not on the default search path). Linux/Windows need no extra hint.
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        shell: bash
+        run: |
+          extra=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            extra+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
+          fi
+          cmake --preset ${{ matrix.preset }} "${extra[@]}"
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }}
@@ -91,14 +113,108 @@ jobs:
             Windows) dumpbin //dependents "${bin}.exe" || true ;;
           esac
 
+      # Best-effort UPX compression. Supported on Linux/Windows PE+ELF; the macOS
+      # Mach-O packer breaks code signing / Gatekeeper so it is skipped there. If
+      # the format is unsupported (e.g. Windows ARM64 PE) the binary ships as-is.
+      - name: Compress binary with UPX
+        if: runner.os != 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          bin="build/${{ matrix.preset }}/studio-bondage-club"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get install -y upx-ucl
+          else
+            choco install upx --no-progress -y
+            bin="${bin}.exe"
+          fi
+          upx --best --lzma "$bin" || echo "UPX unsupported for this target — shipping uncompressed."
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: studio-bondage-club-${{ matrix.os }}-${{ matrix.preset }}
+          name: studio-bondage-club-${{ matrix.slug }}
           path: |
             build/${{ matrix.preset }}/studio-bondage-club
             build/${{ matrix.preset }}/studio-bondage-club.exe
           if-no-files-found: ignore
+
+  # Fully-static Linux binary built against musl in an Alpine container: libc and
+  # OpenSSL are linked statically (vcpkg `vendored-openssl` feature), so the
+  # result is self-contained and runs on any distro. Each arch builds natively
+  # (musl-static output still runs on the glibc host), so tests run too.
+  build-linux-musl:
+    name: Linux musl ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    container: alpine:3.20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64,   os: ubuntu-latest,    slug: linux-musl-x64 }
+          - { arch: arm64, os: ubuntu-24.04-arm, slug: linux-musl-arm64 }
+
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+      # vcpkg ships glibc-linked cmake/ninja; on musl force it to use ours (apk).
+      VCPKG_FORCE_SYSTEM_BINARIES: "1"
+
+    steps:
+      # Native musl toolchain + build tools. gcompat/libstdc++ let the runner's
+      # bundled (glibc) Node run the JS actions under musl. samurai provides the
+      # `ninja` command. Mark the workspace a safe git dir for the root user.
+      - name: Install toolchain (apk)
+        shell: sh
+        run: |
+          apk add --no-cache \
+            build-base cmake samurai git bash perl linux-headers \
+            curl zip unzip tar pkgconf upx file nodejs npm gcompat libstdc++
+          git config --global --add safe.directory '*'
+
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg .vcpkg
+          baseline=$(node -p "require('./vcpkg.json')['builtin-baseline']")
+          git -C .vcpkg checkout "$baseline"
+          ./.vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure
+        shell: bash
+        run: cmake --preset musl-static
+
+      - name: Build
+        shell: bash
+        run: cmake --build build/musl-static
+
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build/musl-static --output-on-failure
+
+      - name: Verify fully static
+        shell: bash
+        run: file build/musl-static/studio-bondage-club
+
+      - name: Compress binary with UPX
+        continue-on-error: true
+        shell: bash
+        run: upx --best --lzma build/musl-static/studio-bondage-club || echo "UPX skipped."
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-bondage-club-${{ matrix.slug }}
+          path: build/musl-static/studio-bondage-club
+          if-no-files-found: error
 
   # React admin panel: type-check + production build.
   web:
@@ -175,9 +291,11 @@ jobs:
           git -C .vcpkg checkout "$baseline"
           ./.vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Build debug APK
+      # build.gradle keeps arm64-v8a + x86_64 for local builds; CI ships only the
+      # arm64 ABI via AGP's injected-ABI override (no manifest/gradle edit needed).
+      - name: Build debug APK (arm64-v8a)
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon -Pandroid.injected.build.abi=arm64-v8a
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
