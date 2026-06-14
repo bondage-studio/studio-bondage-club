@@ -29,12 +29,10 @@ class App {
 public:
     App(config::Store& store, config::Config cfg, host::ProviderContext ctx);
 
-    // handler returns the Handler given to HttpServer.
     Handler handler();
 
     boost::asio::awaitable<void> serve(Request& req, ResponseWriter& raw);
 
-    // close releases the active provider's resources.
     void close();
 
     std::string active_address() const { return active_address_; }

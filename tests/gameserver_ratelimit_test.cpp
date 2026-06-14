@@ -51,8 +51,7 @@ std::string sid_of(const std::string& open_body) {
     return nlohmann::json::parse(open_body.substr(1)).at("sid").get<std::string>();
 }
 
-// connect_and_check returns whether the Socket.IO CONNECT was accepted (i.e. the
-// connect handler ran). The handler records the accepted member into `accepted`.
+// Returns whether the Socket.IO CONNECT handler ran.
 asio::awaitable<bool> connect(sio::SocketIoServer& hub, const std::string& address, int& counter) {
     CapturingWriter hs;
     Request hs_req = req("GET", "EIO=4&transport=polling", {}, address);

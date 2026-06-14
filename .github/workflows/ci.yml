@@ -11,9 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---------------------------------------------------------------------------
   # C++ server: build + unit tests across platforms and linkage flavours.
-  # ---------------------------------------------------------------------------
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -102,9 +100,7 @@ jobs:
             build/${{ matrix.preset }}/studio-bondage-club.exe
           if-no-files-found: ignore
 
-  # ---------------------------------------------------------------------------
   # React admin panel: type-check + production build.
-  # ---------------------------------------------------------------------------
   web:
     name: Web panel
     runs-on: ubuntu-latest

@@ -251,7 +251,6 @@ export function Window({
       style={style}
     >
       {chrome}
-      {/* resize handle */}
       <div
         onPointerDown={onResizePointerDown}
         title="Resize"

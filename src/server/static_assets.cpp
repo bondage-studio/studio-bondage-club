@@ -37,9 +37,11 @@ public:
         if (ec) return std::nullopt;
         fs::path root_canonical = fs::weakly_canonical(root_, ec);
         if (ec) return std::nullopt;
-        // Ensure canonical is within root_canonical.
-        auto rel = canonical.lexically_relative(root_canonical);
-        if (rel.empty() || rel.native().rfind("..", 0) == 0) return std::nullopt;
+        // Ensure canonical is within root_canonical. Use generic_string() (always
+        // std::string with '/' separators) rather than native() — the latter is a
+        // std::wstring on Windows, where rfind() rejects a narrow string literal.
+        std::string rel = canonical.lexically_relative(root_canonical).generic_string();
+        if (rel.empty() || rel.rfind("..", 0) == 0) return std::nullopt;
         if (!fs::is_regular_file(canonical, ec)) return std::nullopt;
         std::ifstream in(canonical, std::ios::binary);
         if (!in) return std::nullopt;

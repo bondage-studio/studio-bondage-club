@@ -8,7 +8,14 @@
     "boost-asio",
     "boost-url",
     "boost-system",
-    "openssl",
+    {
+      "name": "openssl",
+      "platform": "!windows"
+    },
+    {
+      "name": "bext-wintls",
+      "platform": "windows"
+    },
     "leveldb",
     "nlohmann-json",
     "spdlog"

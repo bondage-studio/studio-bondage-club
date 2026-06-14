@@ -43,7 +43,13 @@ endif()
 
 # Dependencies (provided by vcpkg toolchain)
 find_package(Boost REQUIRED COMPONENTS system url)
-find_package(OpenSSL REQUIRED)
+# TLS + crypto backend: OpenSSL everywhere except Windows, where we use the
+# OS-native Schannel (via the header-only wintls wrapper) and CNG (bcrypt) so no
+# OpenSSL is linked or shipped. wintls is header-only with no CMake config, so it
+# is consumed purely through the vcpkg include path + the system libs below.
+if(NOT WIN32)
+  find_package(OpenSSL REQUIRED)
+endif()
 find_package(leveldb CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
@@ -71,12 +77,17 @@ target_compile_features(sbc_core PUBLIC cxx_std_20)
 target_link_libraries(sbc_core PUBLIC
   Boost::system
   Boost::url
-  OpenSSL::SSL
-  OpenSSL::Crypto
   leveldb::leveldb
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   Threads::Threads)
+
+if(WIN32)
+  # Schannel (Secur32/Crypt32) backs wintls; bcrypt/CNG backs SHA-256 + PBKDF2.
+  target_link_libraries(sbc_core PUBLIC Secur32 Crypt32 bcrypt)
+else()
+  target_link_libraries(sbc_core PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+endif()
 
 target_compile_definitions(sbc_core PUBLIC
   BOOST_ASIO_NO_DEPRECATED

@@ -1,7 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 
-/** Per-section Refresh + Save controls. Save is disabled unless this section is dirty. */
 export function SectionBar({
   dirty,
   busy,

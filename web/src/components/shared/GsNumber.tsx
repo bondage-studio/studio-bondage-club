@@ -2,7 +2,6 @@ import { Input } from "../ui/input";
 import { FormField } from "./FormField";
 import type { AppConfig, GameServerSettings } from "../../types";
 
-/** A labelled numeric input bound to one GameServerSettings key. */
 export function GsNumber({
   label,
   cfg,

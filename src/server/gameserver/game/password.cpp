@@ -3,9 +3,16 @@
 #include <array>
 #include <cstdint>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+
+#include <bcrypt.h>
+#else
 #include <openssl/evp.h>
+#endif
 
 #include "common/base64.hpp"
 
@@ -18,10 +25,27 @@ constexpr int kHashLen = 32;  // SHA-256 output
 
 std::string derive(std::string_view password, const std::string& salt, int iterations) {
     std::array<unsigned char, kHashLen> out{};
+#ifdef _WIN32
+    // Windows: PBKDF2-HMAC-SHA256 via CNG (bcrypt), so no OpenSSL is shipped. The
+    // HMAC flag is required for BCryptDeriveKeyPBKDF2.
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr,
+                                                    BCRYPT_ALG_HANDLE_HMAC_FLAG))) {
+        throw std::runtime_error("pbkdf2: failed to open algorithm provider");
+    }
+    NTSTATUS st = BCryptDeriveKeyPBKDF2(
+        alg, reinterpret_cast<PUCHAR>(const_cast<char*>(password.data())),
+        static_cast<ULONG>(password.size()),
+        reinterpret_cast<PUCHAR>(const_cast<char*>(salt.data())), static_cast<ULONG>(salt.size()),
+        static_cast<ULONGLONG>(iterations), out.data(), static_cast<ULONG>(out.size()), 0);
+    BCryptCloseAlgorithmProvider(alg, 0);
+    if (!BCRYPT_SUCCESS(st)) throw std::runtime_error("pbkdf2: key derivation failed");
+#else
     PKCS5_PBKDF2_HMAC(password.data(), static_cast<int>(password.size()),
                       reinterpret_cast<const unsigned char*>(salt.data()),
                       static_cast<int>(salt.size()), iterations, EVP_sha256(),
                       static_cast<int>(out.size()), out.data());
+#endif
     return std::string(reinterpret_cast<char*>(out.data()), out.size());
 }
 

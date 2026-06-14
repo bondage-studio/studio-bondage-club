@@ -1,23 +1,25 @@
 #include "server/websocket_proxy.hpp"
 
-#include <openssl/ssl.h>
-
 #include <boost/asio/as_tuple.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/redirect_error.hpp>
-#include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
-#include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
-#include <boost/beast/websocket/ssl.hpp>
 
 #include "net/tls.hpp"
+
+// Backend-specific Beast ↔ TLS-stream glue (websocket teardown over the secure
+// next layer). wintls carries its own teardown overloads via <boost/wintls.hpp>;
+// the OpenSSL backend needs Beast's ssl teardown helpers.
+#ifndef _WIN32
+#include <boost/beast/websocket/ssl.hpp>
+#endif
 
 namespace sbc::server {
 
@@ -25,7 +27,6 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
 namespace websocket = boost::beast::websocket;
-namespace ssl = boost::asio::ssl;
 using tcp = asio::ip::tcp;
 using namespace asio::experimental::awaitable_operators;
 
@@ -110,12 +111,9 @@ asio::awaitable<void> relay_websocket(Request& req, ResponseWriter& w, const Url
 
     const bool secure = target.is_https() || target.scheme() == "wss";
     if (secure) {
-        websocket::stream<ssl::stream<beast::tcp_stream>> upstream(std::move(socket), tls.context());
-        if (SSL_set_tlsext_host_name(upstream.next_layer().native_handle(), host.c_str()) != 1) {
-            co_return;
-        }
-        upstream.next_layer().set_verify_callback(ssl::host_name_verification(host));
-        co_await upstream.next_layer().async_handshake(ssl::stream_base::client,
+        websocket::stream<net::TlsStream> upstream(std::move(socket), tls.context());
+        net::tls_set_client_hostname(upstream.next_layer(), host);
+        co_await upstream.next_layer().async_handshake(net::kTlsHandshakeClient,
                                                        asio::use_awaitable);
         upstream.set_option(websocket::stream_base::decorator(decorator));
         co_await upstream.async_handshake(host, path, asio::use_awaitable);

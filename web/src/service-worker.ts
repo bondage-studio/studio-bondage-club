@@ -39,11 +39,11 @@ self.addEventListener("fetch", (event) => {
 // interception. This includes both game assets (e.g.
 // http://127.0.0.1:8080/Screens/...) and the game socket: the client hooks
 // CommonGetServer() to return the local origin, so socket.io connects to the
-// same-origin /socket.io/ endpoint, which the Go backend forwards to the real
-// game server (WebSocket upgrades bypass the SW entirely).
+// same-origin /socket.io/ endpoint, which the local backend forwards to the
+// configured game server (WebSocket upgrades bypass the SW entirely).
 //
 // Cross-origin mod/CDN resources (e.g. cdn.jsdelivr.net) are routed through the
-// local server at /{original-url}, where the Go backend caches them.
+// local server at /{original-url}, where the local backend caches them.
 function toRemoteLoaderURL(rawURL: string): string | null {
   let url: URL;
   try {

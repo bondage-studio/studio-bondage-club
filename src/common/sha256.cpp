@@ -1,10 +1,15 @@
 #include "common/sha256.hpp"
 
-#include <openssl/evp.h>
-
 #include <array>
-#include <cstdio>
 #include <stdexcept>
+
+#ifdef _WIN32
+#include <windows.h>
+
+#include <bcrypt.h>
+#else
+#include <openssl/evp.h>
+#endif
 
 namespace sbc::crypto {
 
@@ -21,7 +26,51 @@ std::string to_hex(const unsigned char* digest, unsigned int len) {
     return out;
 }
 
+constexpr unsigned int kDigestLen = 32;  // SHA-256 output size
+
 }  // namespace
+
+#ifdef _WIN32
+
+// Windows: CNG (bcrypt) instead of OpenSSL, so no OpenSSL is linked or shipped.
+struct Sha256::Impl {
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+};
+
+Sha256::Sha256() : impl_(std::make_unique<Impl>()) {
+    if (!BCRYPT_SUCCESS(
+            BCryptOpenAlgorithmProvider(&impl_->alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0)) ||
+        !BCRYPT_SUCCESS(BCryptCreateHash(impl_->alg, &impl_->hash, nullptr, 0, nullptr, 0, 0))) {
+        throw std::runtime_error("sha256: failed to initialize digest context");
+    }
+}
+
+Sha256::~Sha256() {
+    if (!impl_) return;
+    if (impl_->hash) BCryptDestroyHash(impl_->hash);
+    if (impl_->alg) BCryptCloseAlgorithmProvider(impl_->alg, 0);
+}
+
+void Sha256::update(const void* data, std::size_t len) {
+    if (len == 0) return;
+    if (!BCRYPT_SUCCESS(BCryptHashData(impl_->hash,
+                                       static_cast<PUCHAR>(const_cast<void*>(data)),
+                                       static_cast<ULONG>(len), 0))) {
+        throw std::runtime_error("sha256: digest update failed");
+    }
+}
+
+std::string Sha256::hex() {
+    std::array<unsigned char, kDigestLen> digest{};
+    if (!BCRYPT_SUCCESS(BCryptFinishHash(impl_->hash, digest.data(),
+                                         static_cast<ULONG>(digest.size()), 0))) {
+        throw std::runtime_error("sha256: digest finalization failed");
+    }
+    return to_hex(digest.data(), kDigestLen);
+}
+
+#else
 
 struct Sha256::Impl {
     EVP_MD_CTX* ctx = nullptr;
@@ -38,8 +87,6 @@ Sha256::~Sha256() {
     if (impl_ && impl_->ctx) EVP_MD_CTX_free(impl_->ctx);
 }
 
-void Sha256::update(std::string_view data) { update(data.data(), data.size()); }
-
 void Sha256::update(const void* data, std::size_t len) {
     if (len == 0) return;
     if (EVP_DigestUpdate(impl_->ctx, data, len) != 1) {
@@ -55,6 +102,10 @@ std::string Sha256::hex() {
     }
     return to_hex(digest.data(), len);
 }
+
+#endif
+
+void Sha256::update(std::string_view data) { update(data.data(), data.size()); }
 
 std::string sha256_hex(std::string_view data) {
     Sha256 h;

@@ -869,7 +869,7 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
     if (!acc->data.contains("Lovership") || !acc->data["Lovership"].is_array())
         acc->data["Lovership"] = json::array();
 
-    // --- Break ---
+    // Break an existing lovership.
     if (action == "Break") {
         json& lov = acc->data["Lovership"];
         int al = -1;
@@ -942,7 +942,7 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
         }
     }
 
-    // --- In-room proposal / acceptance flow (6 steps) ---
+    // In-room proposal / acceptance flow (six steps).
     if (!acc->chat_room) return;
     ChatRoom& room = *acc->chat_room;
 

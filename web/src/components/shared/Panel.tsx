@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-/** A grouped, bordered settings card with an optional header row. */
 export function Panel({
   title,
   action,

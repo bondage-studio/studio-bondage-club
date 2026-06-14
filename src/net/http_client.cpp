@@ -1,14 +1,10 @@
 #include "net/http_client.hpp"
 
-#include <openssl/ssl.h>
-
 #include <boost/asio/as_tuple.hpp>
 #include <boost/asio/connect.hpp>
-#include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
-#include <boost/beast/ssl.hpp>
 
 #include <chrono>
 #include <exception>
@@ -16,7 +12,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/error.hpp"
 #include "net/tls.hpp"
 
 namespace sbc::net {
@@ -24,7 +19,6 @@ namespace sbc::net {
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = boost::beast::http;
-namespace ssl = boost::asio::ssl;
 using tcp = asio::ip::tcp;
 using SteadyClock = std::chrono::steady_clock;
 
@@ -42,7 +36,6 @@ bool iequals(std::string_view a, std::string_view b) {
 }
 
 using PlainStream = beast::tcp_stream;
-using TlsStream = ssl::stream<beast::tcp_stream>;
 
 template <class Stream>
 struct PoolEntry {
@@ -229,13 +222,8 @@ asio::awaitable<ClientResponse> HttpClient::fetch_tls(const std::string& host, s
             beast::tcp_stream tcp_layer(std::move(socket));
             tcp_layer.expires_after(timeout_);
             conn = std::make_unique<TlsStream>(std::move(tcp_layer), tls_.context());
-            if (SSL_set_tlsext_host_name(conn->native_handle(), host.c_str()) != 1) {
-                throw Error("tls: failed to set SNI host name");
-            }
-            conn->set_verify_callback(ssl::host_name_verification(host));
-            static const unsigned char kAlpn[] = {8, 'h', 't', 't', 'p', '/', '1', '.', '1'};
-            SSL_set_alpn_protos(conn->native_handle(), kAlpn, sizeof(kAlpn));
-            co_await conn->async_handshake(ssl::stream_base::client, asio::use_awaitable);
+            tls_set_client_hostname(*conn, host);
+            co_await conn->async_handshake(kTlsHandshakeClient, asio::use_awaitable);
         }
         beast::get_lowest_layer(*conn).expires_after(timeout_);
 

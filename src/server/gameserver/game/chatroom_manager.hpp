@@ -63,7 +63,7 @@ private:
     void chat_room_admin(const std::string& socket_id, nlohmann::json data);
     void chat_room_allow_item(std::shared_ptr<socketio::Socket> socket, nlohmann::json data);
 
-    // --- helpers below assume GameState::mu is held by the caller ---
+    // Helpers below assume GameState::mu is held by the caller.
     std::shared_ptr<OnlineAccount> account_for(const std::string& socket_id);
     void room_remove_locked(const std::shared_ptr<OnlineAccount>& acc, const std::string& reason,
                             nlohmann::json dictionary);
