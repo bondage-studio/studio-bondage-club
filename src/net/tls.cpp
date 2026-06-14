@@ -14,16 +14,15 @@ namespace sbc::net {
 
 // Windows: Schannel via wintls. The system trust store provides the CA roots and
 // performs chain + hostname validation during the handshake.
-TlsContext::TlsContext() : ctx_(boost::wintls::method::system_default) {
+TlsContext::TlsContext() : ctx_(wintls::method::system_default) {
     ctx_.use_default_certificates(true);
     ctx_.verify_server_certificate(true);
 }
 
 void tls_set_client_hostname(TlsStream& stream, const std::string& host) {
     // Sets the SNI host name and the name checked against the certificate during
-    // the handshake; also enable online revocation checking.
-    boost::wintls::set_server_hostname(stream, host);
-    boost::wintls::set_certificate_revocation_check(stream, true);
+    // the handshake (chain validation against the Windows trust store).
+    stream.set_server_hostname(host);
 }
 
 #else

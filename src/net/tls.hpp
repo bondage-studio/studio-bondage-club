@@ -5,7 +5,7 @@
 #include <boost/beast/core/tcp_stream.hpp>
 
 #ifdef _WIN32
-#include <boost/wintls.hpp>
+#include <wintls.hpp>
 #else
 #include <boost/asio/ssl/context.hpp>
 #include <boost/asio/ssl/stream.hpp>
@@ -20,9 +20,9 @@ namespace sbc::net {
 // SNI/verification is applied (tls_set_client_hostname) and the handshake-type
 // constant below.
 #ifdef _WIN32
-using NativeTlsContext = boost::wintls::context;
-using TlsStream = boost::wintls::stream<boost::beast::tcp_stream>;
-inline constexpr auto kTlsHandshakeClient = boost::wintls::handshake_type::client;
+using NativeTlsContext = wintls::context;
+using TlsStream = wintls::stream<boost::beast::tcp_stream>;
+inline constexpr auto kTlsHandshakeClient = wintls::handshake_type::client;
 #else
 using NativeTlsContext = boost::asio::ssl::context;
 using TlsStream = boost::asio::ssl::stream<boost::beast::tcp_stream>;
