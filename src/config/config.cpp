@@ -33,6 +33,83 @@ std::string ServerConfig::address() const {
     return host + ":" + p;
 }
 
+namespace {
+
+// default_cache_stores / default_cache_rules seed a fresh install with caching
+// that actually works out of the box. Desktop users could previously copy a
+// tuned config.json, but a packaged host (notably Android) only ever gets the
+// generated default config, so an empty rule set meant nothing got cached. These
+// mirror run/config.json: separate "echo" / "mpa" stores for the content-
+// addressed add-ons and an "assets" store for the game body, keyed by the
+// game's R-number and revalidated across releases.
+std::vector<StoreConfig> default_cache_stores() {
+    std::vector<StoreConfig> stores;
+    for (const char* name : {"assets", "echo", "mpa"}) {
+        StoreConfig s;
+        s.name = name;
+        stores.push_back(std::move(s));
+    }
+    return stores;
+}
+
+std::vector<cache::CacheRule> default_cache_rules() {
+    constexpr const char* kImmutable = "public, max-age=31536000, immutable";
+    std::vector<cache::CacheRule> rules;
+
+    // Echo clothing/activity extensions served from GitHub Pages (?v= token).
+    {
+        cache::CacheRule r;
+        r.host = "sugarchain-studio.github.io";
+        r.store = "echo";
+        r.cache_control = kImmutable;
+        r.force_cache = true;
+        r.version = "query:v";
+        r.key_pattern = "re:^/(echo-(?:clothing|activity)-ext)/(.*)$";
+        r.key_template = "$1/$2";
+        rules.push_back(std::move(r));
+    }
+    // Same extensions served from jsDelivr (@version in the path); canonicalised
+    // to the same key so both URL shapes share one cached copy.
+    {
+        cache::CacheRule r;
+        r.host = "cdn.jsdelivr.net";
+        r.store = "echo";
+        r.cache_control = kImmutable;
+        r.force_cache = true;
+        r.version = "re:@([^/]+)/";
+        r.key_pattern = "re:^/gh/SugarChain-Studio/(echo-(?:clothing|activity)-ext)@[^/]+/(.*)$";
+        r.key_template = "$1/$2";
+        rules.push_back(std::move(r));
+    }
+    // MPA audio assets.
+    {
+        cache::CacheRule r;
+        r.host = "mayathefoxy.github.io";
+        r.path_prefix = "/MPA/assets/";
+        r.path_pattern = "re:\\.mp3$";
+        r.store = "mpa";
+        r.key_mode = "path";
+        r.cache_control = kImmutable;
+        r.force_cache = true;
+        rules.push_back(std::move(r));
+    }
+    // Catch-all for the game body itself, keyed by path and revalidated whenever
+    // the R-number bumps so unchanged files 304 and carry over across releases.
+    {
+        cache::CacheRule r;
+        r.store = "assets";
+        r.key_mode = "path";
+        r.cache_control = "public, max-age=86400";
+        r.force_cache = true;
+        r.version = "re:/(R\\d+)/BondageClub/";
+        r.version_revalidate = true;
+        rules.push_back(std::move(r));
+    }
+    return rules;
+}
+
+}  // namespace
+
 Config default_config() {
     auto cache_root = platform::user_cache_dir();
     auto config_root = platform::user_config_dir();
@@ -49,6 +126,8 @@ Config default_config() {
     c.cache.dir = (base_cache / "http-cache").string();
     c.cache.default_ttl_seconds = 0;
     c.cache.max_size_bytes = 5LL * 1024 * 1024 * 1024;
+    c.cache.stores = default_cache_stores();
+    c.cache.rules = default_cache_rules();
     c.package.dir = (base_config / "packages").string();
     return c;
 }

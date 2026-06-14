@@ -108,9 +108,14 @@ if(SBC_EMBED_WEB)
   target_compile_definitions(sbc_core PUBLIC SBC_EMBED_WEB=1)
 endif()
 
-# Executable
-add_executable(studio-bondage-club "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
-target_link_libraries(studio-bondage-club PRIVATE sbc_core)
+# Executable. On Android the only consumer of sbc_core is the JNI shared library
+# (see android/app/src/main/cpp/CMakeLists.txt), which provides its own entry
+# point — the desktop CLI executable, with its signal-driven wait loop, is not
+# built there.
+if(NOT ANDROID)
+  add_executable(studio-bondage-club "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+  target_link_libraries(studio-bondage-club PRIVATE sbc_core)
+endif()
 
 # Runtime linkage (C/C++ standard library)
 # MSVC is handled via CMAKE_MSVC_RUNTIME_LIBRARY above. For GCC / non-Apple Clang
@@ -121,7 +126,9 @@ function(sbc_apply_static_runtime target)
     target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++)
   endif()
 endfunction()
-sbc_apply_static_runtime(studio-bondage-club)
+if(NOT ANDROID)
+  sbc_apply_static_runtime(studio-bondage-club)
+endif()
 
 # Release size / speed optimisations
 # Generator expressions keep these correct for both single- and multi-config
@@ -136,30 +143,37 @@ if(NOT MSVC)
     $<${_sbc_release_cfg}:-fvisibility=hidden -ffunction-sections -fdata-sections>)
 endif()
 
-if(APPLE)
-  # -dead_strip: drop unreferenced sections; -S: strip debug symbols.
-  target_link_options(studio-bondage-club PRIVATE
-    $<${_sbc_release_cfg}:-Wl,-dead_strip>
-    $<$<CONFIG:Release,MinSizeRel>:-Wl,-S>)
-elseif(MSVC)
-  # /OPT:REF eliminates unreferenced code/data; /OPT:ICF folds identical COMDATs.
-  target_link_options(studio-bondage-club PRIVATE
-    $<${_sbc_release_cfg}:/OPT:REF /OPT:ICF>)
-elseif(UNIX)
-  target_link_options(studio-bondage-club PRIVATE
-    $<${_sbc_release_cfg}:-Wl,--gc-sections>
-    $<$<CONFIG:Release,MinSizeRel>:-Wl,-s>)
+# Executable-only link options. Skipped on Android, where the desktop CLI
+# executable is not built (the JNI shared library carries its own link flags).
+if(NOT ANDROID)
+  if(APPLE)
+    # -dead_strip: drop unreferenced sections; -S: strip debug symbols.
+    target_link_options(studio-bondage-club PRIVATE
+      $<${_sbc_release_cfg}:-Wl,-dead_strip>
+      $<$<CONFIG:Release,MinSizeRel>:-Wl,-S>)
+  elseif(MSVC)
+    # /OPT:REF eliminates unreferenced code/data; /OPT:ICF folds identical COMDATs.
+    target_link_options(studio-bondage-club PRIVATE
+      $<${_sbc_release_cfg}:/OPT:REF /OPT:ICF>)
+  elseif(UNIX)
+    target_link_options(studio-bondage-club PRIVATE
+      $<${_sbc_release_cfg}:-Wl,--gc-sections>
+      $<$<CONFIG:Release,MinSizeRel>:-Wl,-s>)
+  endif()
 endif()
 
 # Link-time optimisation (inter-procedural). Opt in with:
 #   cmake … -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
-  set_target_properties(sbc_core studio-bondage-club
-    PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  set_target_properties(sbc_core PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  if(NOT ANDROID)
+    set_target_properties(studio-bondage-club
+      PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+  endif()
 endif()
 
-# Tests
-if(SBC_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+# Tests (host-only — not built for Android, which has no test runner on device)
+if(SBC_BUILD_TESTS AND NOT ANDROID AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
   enable_testing()
   file(GLOB SBC_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
   if(SBC_TEST_SOURCES)

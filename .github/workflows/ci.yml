@@ -127,3 +127,61 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+
+  # Android app: embeds the server core (built per-ABI via vcpkg + NDK) and the
+  # web panel into a WebView APK.
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Node builds web/dist (driven by the buildWebAssets Gradle task); python3
+      # (preinstalled on the runner) generates the embedded-asset translation unit.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
+
+      # Bootstrap vcpkg into ./.vcpkg at the manifest baseline (the Android shim
+      # toolchain chainloads it onto the NDK). Manifest deps build per ABI.
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg .vcpkg
+          baseline=$(node -p "require('./vcpkg.json')['builtin-baseline']")
+          git -C .vcpkg checkout "$baseline"
+          ./.vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-bondage-club-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

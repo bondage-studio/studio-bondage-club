@@ -96,6 +96,14 @@ async function fetchHomepageSource(bootstrap: StudioBootstrap) {
 }
 
 async function registerServiceWorker(bootstrap: StudioBootstrap) {
+  // The Android WebView host (MainActivity) intercepts cross-origin requests
+  // natively via shouldInterceptRequest and tags its user agent, so the service
+  // worker is redundant there. Returning false routes through the same
+  // parse-time URL-rewriting fallback used when service workers are unavailable.
+  if (navigator.userAgent.includes("StudioBC-Android")) {
+    setStatus(bootstrap, "loading", "Native WebView interception active; service worker disabled.");
+    return false;
+  }
   if (!("serviceWorker" in navigator)) {
     setStatus(bootstrap, "loading", "Service workers are unavailable; continuing with local URL rewriting.");
     return false;

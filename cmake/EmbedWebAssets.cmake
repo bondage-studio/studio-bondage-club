@@ -6,15 +6,16 @@
 function(embed_web_assets target dist_dir)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-    set(generated "${CMAKE_BINARY_DIR}/embedded_assets_generated.cpp")
+    get_filename_component(_sbc_repo_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
+    set(generated "${CMAKE_CURRENT_BINARY_DIR}/embedded_assets_generated.cpp")
     file(GLOB_RECURSE asset_files "${dist_dir}/*")
 
     add_custom_command(
         OUTPUT "${generated}"
         COMMAND ${Python3_EXECUTABLE}
-                "${CMAKE_SOURCE_DIR}/tools/embed_assets.py"
+                "${_sbc_repo_root}/tools/embed_assets.py"
                 "${dist_dir}" "${generated}"
-        DEPENDS "${CMAKE_SOURCE_DIR}/tools/embed_assets.py" ${asset_files}
+        DEPENDS "${_sbc_repo_root}/tools/embed_assets.py" ${asset_files}
         COMMENT "Embedding web/dist assets into the binary"
         VERBATIM)
 

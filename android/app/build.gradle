@@ -1,0 +1,108 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// The C++ server core, its CMake build, the vcpkg manifest + vendored vcpkg, and
+// the web frontend all live in the repo root (one level above this Gradle root).
+def repoRoot = rootDir.parentFile
+def webDir = new File(repoRoot, 'web')
+
+android {
+    namespace 'com.studio.bondageclub'
+    compileSdk 34
+
+    // Pin the NDK so the vcpkg android triplets + C++20 build are reproducible.
+    ndkVersion '30.0.14904198'
+
+    defaultConfig {
+        applicationId 'com.studio.bondageclub'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+
+        ndk {
+            // arm64 phones + the x86_64 emulator (per project decision).
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+
+        externalNativeBuild {
+            cmake {
+                // The shim toolchain picks the vcpkg android triplet from
+                // ANDROID_ABI and chainloads the NDK toolchain, so the manifest
+                // deps (Boost, OpenSSL, LevelDB, …) build for each ABI.
+                arguments += [
+                    "-DCMAKE_TOOLCHAIN_FILE=${projectDir}/src/main/cpp/vcpkg-android-toolchain.cmake".toString(),
+                    // Our top-level CMake project is app/src/main/cpp, so point
+                    // vcpkg at the repo-root manifest explicitly.
+                    "-DVCPKG_MANIFEST_DIR=${repoRoot}".toString(),
+                    '-DANDROID_STL=c++_shared',
+                    '-DSBC_EMBED_WEB=ON',
+                    '-DSBC_BUILD_TESTS=OFF',
+                ]
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Unsigned debug build (default debug signing config).
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    // The WebView host uses only the framework (android.app.Activity + WebView),
+    // so no AndroidX UI libraries are required. Kotlin stdlib is added by the
+    // Kotlin plugin automatically.
+}
+
+// Build the web frontend (web/dist) before the native build embeds it into the
+// .so. Up-to-date checked against web/src so repeat builds skip the npm step.
+tasks.register('buildWebAssets', Exec) {
+    description = 'Builds web/dist (npm) for embedding into libsbc_jni.so'
+    workingDir = webDir
+    inputs.dir(new File(webDir, 'src'))
+    inputs.file(new File(webDir, 'package.json'))
+    inputs.file(new File(webDir, 'vite.config.ts'))
+    outputs.dir(new File(webDir, 'dist'))
+    def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm install --no-audit --no-fund && npm run build'
+    } else {
+        commandLine 'sh', '-c', 'npm install --no-audit --no-fund && npm run build'
+    }
+}
+
+// web/dist must exist before CMake's configure step globs it for embedding.
+// Gate both preBuild and the externalNativeBuild configure/build tasks (whose
+// names contain "CMake") on the web build.
+tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn 'buildWebAssets'
+}
+afterEvaluate {
+    tasks.matching { it.name.contains('CMake') }.configureEach {
+        dependsOn 'buildWebAssets'
+    }
+}

@@ -1,21 +1,15 @@
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 
 #include <condition_variable>
-#include <cstdlib>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <spdlog/spdlog.h>
 
-#include "config/config.hpp"
-#include "config/store.hpp"
-#include "host/provider_context.hpp"
-#include "net/blocking_pool.hpp"
-#include "net/io_runtime.hpp"
-#include "net/tls.hpp"
-#include "server/app.hpp"
-#include "server/http_server.hpp"
+#include "server/embedded_server.hpp"
 
 namespace asio = boost::asio;
 using namespace sbc;
@@ -45,48 +39,23 @@ int main(int argc, char** argv) {
 
     std::string config_path = parse_config_flag(argc, argv);
 
-    config::Store store = config::Store::open(config_path);
-    config::Config cfg;
+    server::EmbeddedServer server;
     try {
-        cfg = store.load();
+        server.start(config_path, /*host_override=*/"", /*port_override=*/0);
     } catch (const std::exception& e) {
-        spdlog::error("load config error={}", e.what());
+        spdlog::error("start error={}", e.what());
         return 1;
     }
 
-    net::IoRuntime runtime;
-    net::BlockingPool blocking;
-    net::TlsContext tls;
-
-    host::ProviderContext ctx;
-    ctx.io = &runtime;
-    ctx.blocking = &blocking;
-    ctx.tls = &tls;
-
-    std::unique_ptr<server::App> app;
-    try {
-        app = std::make_unique<server::App>(store, cfg, ctx);
-    } catch (const std::exception& e) {
-        spdlog::error("create app error={}", e.what());
-        return 1;
-    }
-
-    server::HttpServer http_server(runtime, cfg.server.host,
-                                   static_cast<std::uint16_t>(cfg.server.port), app->handler());
-    try {
-        http_server.start();
-    } catch (const std::exception& e) {
-        spdlog::error("http server failed error={}", e.what());
-        return 1;
-    }
-
-    spdlog::info("studio bondage club local host started address={} config={} mode={} upstream={}",
-                 "http://" + http_server.address(), store.path().string(), cfg.mode, cfg.upstream);
-
+    // Wait for SIGINT/SIGTERM, then shut down. The signal_set needs its own
+    // io_context: EmbeddedServer's runtime is busy serving requests, and running
+    // the signal wait on a private context keeps the lifecycle plumbing out of
+    // the reusable server core.
+    asio::io_context signal_ctx;
     std::mutex m;
     std::condition_variable cv;
     bool stop = false;
-    asio::signal_set signals(runtime.context(), SIGINT, SIGTERM);
+    asio::signal_set signals(signal_ctx, SIGINT, SIGTERM);
     signals.async_wait([&](const boost::system::error_code&, int) {
         {
             std::lock_guard<std::mutex> lock(m);
@@ -95,18 +64,15 @@ int main(int argc, char** argv) {
         cv.notify_one();
     });
 
+    std::thread signal_thread([&] { signal_ctx.run(); });
+
     {
         std::unique_lock<std::mutex> lock(m);
         cv.wait(lock, [&] { return stop; });
     }
 
-    spdlog::info("shutting down");
-    http_server.stop();
-    app->close();
-    runtime.stop();
-    blocking.stop();
-    blocking.join();
-
-    spdlog::info("studio bondage club local host stopped");
+    server.stop();
+    signal_ctx.stop();
+    signal_thread.join();
     return 0;
 }

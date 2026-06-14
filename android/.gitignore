@@ -1,0 +1,9 @@
+# Android / Gradle build outputs and machine-specific config
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/

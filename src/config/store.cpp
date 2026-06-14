@@ -39,7 +39,8 @@ void reject_unknown(const ordered_json& obj, std::initializer_list<const char*> 
 void strict_check(const ordered_json& root) {
     if (!root.is_object()) throw Error("config must be a JSON object");
     reject_unknown(root, {"server", "mode", "upstream", "gameServer", "socks5Proxy",
-                          "localGameServer", "gameServerSettings", "cache", "package"});
+                          "localGameServer", "gameServerStoragePath", "gameServerSettings",
+                          "cache", "package"});
     if (auto it = root.find("server"); it != root.end() && it->is_object()) {
         reject_unknown(*it, {"host", "port", "adminBasePath"});
     }
@@ -64,7 +65,8 @@ void strict_check(const ordered_json& root) {
             for (const auto& r : *rl) {
                 if (r.is_object())
                     reject_unknown(r, {"host", "pathPrefix", "pathPattern", "store", "bypass",
-                                       "ttlSeconds", "keyMode", "cacheControl", "forceCache"});
+                                       "ttlSeconds", "keyMode", "cacheControl", "forceCache",
+                                       "version", "keyPattern", "keyTemplate", "versionRevalidate"});
             }
         }
     }
