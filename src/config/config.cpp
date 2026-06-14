@@ -56,7 +56,7 @@ Config default_config() {
 std::string game_storage_dir(const Config& c) {
     if (!c.game_server_storage_path.empty()) return c.game_server_storage_path;
     std::string base = c.cache.dir.empty() ? "." : c.cache.dir;
-    return (std::filesystem::path(base) / "gameserver").string();
+    return (std::filesystem::path(base) / "gameserver").generic_string();
 }
 
 Url parse_upstream(const std::string& raw) {
