@@ -1,4 +1,5 @@
 import { isAndroidRuntime } from "./lib/platform";
+import { injectUserscriptsAt } from "./userscripts/inject";
 
 interface StudioBootstrap {
   homepageSourcePath: string;
@@ -311,6 +312,9 @@ async function restoreParsedHomepage(
 
   const loadReplay = installWindowLoadReplay();
   try {
+    // Userscripts @run-at document-start: before the page's own scripts run.
+    await injectUserscriptsAt("document-start");
+
     // Insert all elements without blocking on individual script loads.
     // Scripts with async=false (set in prepareScript) execute in insertion
     // order, so the browser can download them in parallel while still
@@ -319,6 +323,11 @@ async function restoreParsedHomepage(
     appendDocumentHead(parsed, bootstrap, source, useServiceWorkerRoutes, scriptPromises);
     appendDocumentBody(parsed, bootstrap, source, useServiceWorkerRoutes, scriptPromises);
     await Promise.allSettled(scriptPromises);
+
+    // Userscripts @run-at document-end: after page scripts loaded, before the
+    // load replay fires GameStart().
+    await injectUserscriptsAt("document-end");
+
     // Override CommonGetServer and wrap socket.io now that game scripts have
     // defined them, but before the load replay triggers GameStart() (which reads
     // them). See the hook comments.
@@ -326,6 +335,9 @@ async function restoreParsedHomepage(
     installCommonServerHook();
     installIoPathHook();
     loadReplay.replayMissedLoad();
+
+    // Userscripts @run-at document-idle (the default): after the load replay.
+    await injectUserscriptsAt("document-idle");
   } finally {
     loadReplay.uninstall();
   }

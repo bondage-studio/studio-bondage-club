@@ -162,3 +162,50 @@ export interface ExpireFilter {
   pathPrefix?: string;
   version?: string;
 }
+
+/** Summary of a fetched-but-unapplied update (set by the background checker). */
+export interface PendingUpdateSummary {
+  version: string;
+  fetchedAt: number;
+}
+
+/** Full pending update record (includes the fetched source for review). */
+export interface PendingUpdate {
+  version: string;
+  source: string;
+  fetchedAt: number;
+}
+
+/**
+ * A managed userscript. `source` is the full `.user.js` text; metadata (run-at,
+ * grants, requires, …) is parsed from it on the client. Stored in a dedicated
+ * LevelDB store on the server, decoupled from the app config.
+ */
+export interface Userscript {
+  id: string;
+  name: string;
+  source: string;
+  enabled: boolean;
+  autoUpdate: boolean;
+  downloadURL?: string;
+  updateURL?: string;
+  version?: string;
+  updatedAt?: number;
+  sortOrder?: number;
+  /** Present when the background checker has a newer version waiting for review. */
+  pendingUpdate?: PendingUpdateSummary;
+}
+
+export interface UserscriptSettings {
+  updateIntervalHours: number;
+}
+
+export interface CheckUpdatesSummary {
+  checked: number;
+  updates: Array<{
+    id: string;
+    name: string;
+    fromVersion: string;
+    toVersion: string;
+  }>;
+}

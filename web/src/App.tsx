@@ -3,6 +3,7 @@ import {
   HardDrive,
   Package,
   RotateCcw,
+  ScrollText,
   Server,
   Settings,
   SlidersHorizontal,
@@ -23,6 +24,7 @@ import { GameSettingsTab } from "./components/tabs/GameSettingsTab";
 import { AndroidTab } from "./components/tabs/AndroidTab";
 import { ModeTab } from "./components/tabs/ModeTab";
 import { PackageTab } from "./components/tabs/PackageTab";
+import { UserscriptsTab } from "./components/tabs/UserscriptsTab";
 import { Button } from "./components/ui/button";
 import { useConfirm } from "./components/ui/confirm";
 import { MasterDetail } from "./components/ui/master-detail";
@@ -42,7 +44,11 @@ import type {
   StoreConfig,
 } from "./types";
 
-type PanelTab = ConfigScopeName | "android";
+type PanelTab = ConfigScopeName | "android" | "userscripts";
+
+// Tabs that own their own state and persistence, independent of the form/scope
+// machinery (no scopeSlice, no SectionBar save flow).
+const SELF_MANAGED_TABS: PanelTab[] = ["android", "userscripts"];
 
 type PageDef = {
   id: PanelTab;
@@ -91,6 +97,12 @@ const allPages: PageDef[] = [
     icon: <Package size={16} />,
     label: "Package",
     description: "Package cache directory and manifest source.",
+  },
+  {
+    id: "userscripts",
+    icon: <ScrollText size={16} />,
+    label: "Userscripts",
+    description: "Install and manage Tampermonkey-style userscripts for the game page."
   },
   {
     id: "android",
@@ -165,9 +177,10 @@ function App() {
   }
 
   function sectionDirty(scope: PanelTab): boolean {
-    if (scope === "android" || !snapshot || !form) return false;
+    if (SELF_MANAGED_TABS.includes(scope) || !snapshot || !form) return false;
     return (
-      JSON.stringify(scopeSlice(form, scope)) !== JSON.stringify(scopeSlice(snapshot.config, scope))
+      JSON.stringify(scopeSlice(form, scope as ConfigScopeName)) !==
+      JSON.stringify(scopeSlice(snapshot.config, scope as ConfigScopeName))
     );
   }
 
@@ -431,17 +444,17 @@ function App() {
                       {activePage.description}
                     </p>
                   </div>
-                  {tab !== "android" && (
+                  {!SELF_MANAGED_TABS.includes(tab) && (
                     <SectionBar
                       dirty={sectionDirty(tab)}
                       busy={busy}
-                      onRefresh={() => void refreshScope(tab)}
+                      onRefresh={() => void refreshScope(tab as ConfigScopeName)}
                       onSave={
                         tab === "cache"
                           ? handleSaveCache
                           : tab === "gameserver"
                             ? handleSaveGameServer
-                            : () => void saveScope(tab)
+                            : () => void saveScope(tab as ConfigScopeName)
                       }
                     />
                   )}
@@ -449,7 +462,9 @@ function App() {
 
                 <ScrollArea className="min-h-0 flex-1">
                   <div className="@container p-3">
-                    {!form || !snapshot ? (
+                    {tab === "userscripts" ? (
+                      <UserscriptsTab />
+                    ) : !form || !snapshot ? (
                       <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
                     ) : (
                       <>

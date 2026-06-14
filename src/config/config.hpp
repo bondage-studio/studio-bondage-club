@@ -111,6 +111,11 @@ Config normalize(Config c);
 // historical default, kept so existing installs keep finding their accounts).
 std::string game_storage_dir(const Config& c);
 
+// userscript_storage_dir resolves the userscript manager's dedicated data
+// directory: <cache.dir>/userscripts (same convention as the embedded game DB).
+// Decoupled from config.json so userscript state lives outside it.
+std::string userscript_storage_dir(const Config& c);
+
 // Parsing/validation helpers (also used by the reverse-proxy provider).
 // parse_upstream appends a trailing slash to the path, like Go.
 Url parse_upstream(const std::string& raw);

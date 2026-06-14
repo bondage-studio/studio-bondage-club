@@ -1,10 +1,14 @@
 import type {
   CacheVersion,
+  CheckUpdatesSummary,
   ConfigResponse,
   ConfigScopeName,
   ExpireFilter,
   GameServerStatus,
-  ScopeUpdateResponse
+  PendingUpdate,
+  ScopeUpdateResponse,
+  Userscript,
+  UserscriptSettings
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -84,5 +88,88 @@ export function listVersions(store?: string): Promise<CacheVersion[]> {
 
 export function loadGameServerStatus(): Promise<GameServerStatus & { enabled: boolean }> {
   return request<GameServerStatus & { enabled: boolean }>("/api/gameserver/status");
+}
+
+// ---- Userscripts -----------------------------------------------------------
+// A dedicated API (not a config scope): the Userscripts tab owns its own state
+// and persistence, decoupled from the form/scope machinery.
+
+export function listUserscripts(): Promise<Userscript[]> {
+  return request<Userscript[]>("/api/userscripts");
+}
+
+/** Upsert one script definition (the body carries its id). */
+export function saveUserscript(script: Userscript): Promise<Userscript> {
+  return request<Userscript>("/api/userscripts", {
+    method: "POST",
+    body: JSON.stringify(script)
+  });
+}
+
+export function deleteUserscript(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/userscripts?script=${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+}
+
+export function reorderUserscripts(ids: string[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/userscripts/reorder", {
+    method: "POST",
+    body: JSON.stringify(ids)
+  });
+}
+
+/** Bulk-read a script's GM values: `{ key: value }`. */
+export function getUserscriptValues(id: string): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>(
+    `/api/userscripts/values?script=${encodeURIComponent(id)}`
+  );
+}
+
+export function setUserscriptValue(id: string, key: string, value: unknown): Promise<unknown> {
+  return request(
+    `/api/userscripts/values?script=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`,
+    { method: "PUT", body: JSON.stringify(value) }
+  );
+}
+
+export function deleteUserscriptValue(id: string, key: string): Promise<unknown> {
+  return request(
+    `/api/userscripts/values?script=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`,
+    { method: "DELETE" }
+  );
+}
+
+export function getUserscriptSettings(): Promise<UserscriptSettings> {
+  return request<UserscriptSettings>("/api/userscripts/settings");
+}
+
+export function saveUserscriptSettings(settings: UserscriptSettings): Promise<UserscriptSettings> {
+  return request<UserscriptSettings>("/api/userscripts/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings)
+  });
+}
+
+export function checkUserscriptUpdates(): Promise<CheckUpdatesSummary> {
+  return request<CheckUpdatesSummary>("/api/userscripts/check-updates", { method: "POST" });
+}
+
+export function getPendingUpdate(id: string): Promise<PendingUpdate> {
+  return request<PendingUpdate>(`/api/userscripts/pending?script=${encodeURIComponent(id)}`);
+}
+
+export function applyUserscriptUpdate(id: string): Promise<Userscript> {
+  return request<Userscript>(
+    `/api/userscripts/apply-update?script=${encodeURIComponent(id)}`,
+    { method: "POST" }
+  );
+}
+
+export function dismissUserscriptUpdate(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(
+    `/api/userscripts/dismiss-update?script=${encodeURIComponent(id)}`,
+    { method: "POST" }
+  );
 }
 
