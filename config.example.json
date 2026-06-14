@@ -1,0 +1,48 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "adminBasePath": "/studio/"
+  },
+  "mode": "reverse_proxy_cache",
+  "upstream": "https://bondage-europe.com/R129/BondageClub/",
+  "gameServer": "https://bondage-club-server.herokuapp.com/",
+  "socks5Proxy": "",
+  "cache": {
+    "dir": "./run/cache",
+    "defaultTTLSeconds": 0,
+    "maxSizeBytes": 5368709120,
+    "stores": [
+      { "name": "assets", "maxSizeBytes": 8589934592 },
+      { "name": "mods", "maxSizeBytes": 2147483648 }
+    ],
+    "rules": [
+      {
+        "host": "claude.mods.bondage.club",
+        "keyMode": "path",
+        "forceCache": true,
+        "cacheControl": "public, max-age=31536000, immutable",
+        "store": "mods"
+      },
+      {
+        "host": "mpa.bondage.club",
+        "keyMode": "path",
+        "forceCache": true,
+        "cacheControl": "public, max-age=31536000, immutable",
+        "store": "mods"
+      },
+      {
+        "pathPrefix": "/Assets/",
+        "pathPattern": "re:\\.(js|css|html|txt|csv|json|png|jpg|jpeg|mp3|ttf|webp|gif|ogg)$",
+        "keyMode": "path",
+        "forceCache": true,
+        "cacheControl": "public, max-age=86400",
+        "store": "assets"
+      }
+    ]
+  },
+  "package": {
+    "dir": "./run/packages",
+    "manifestUrl": ""
+  }
+}

@@ -1,0 +1,183 @@
+#include <nlohmann/json.hpp>
+
+#include "cache/router.hpp"
+#include "common/url.hpp"
+#include "config/config.hpp"
+#include "config/json.hpp"
+#include "config/store.hpp"
+#include "test_framework.hpp"
+
+using namespace sbc;
+
+namespace {
+
+// A representative config including a "_comment" key (must be ignored on load)
+// and the real rule set from run/config.json.
+const char* kSampleConfig = R"JSON({
+  "server": { "host": "127.0.0.1", "port": 8080, "adminBasePath": "/studio/" },
+  "mode": "reverse_proxy_cache",
+  "upstream": "https://bondage-europe.com/R129/BondageClub/",
+  "gameServer": "https://bondage-club-server.herokuapp.com/",
+  "socks5Proxy": "",
+  "cache": {
+    "dir": "/tmp/sbc-cache",
+    "defaultTTLSeconds": 0,
+    "maxSizeBytes": 5368709120,
+    "stores": [
+      { "name": "assets", "maxSizeBytes": 8589934592 },
+      { "name": "mods", "maxSizeBytes": 2147483648 }
+    ],
+    "rules": [
+      { "_comment": "ignored", "host": "claude.mods.bondage.club", "keyMode": "path",
+        "forceCache": true, "cacheControl": "public, max-age=31536000, immutable", "store": "mods" },
+      { "pathPrefix": "/Assets/", "pathPattern": "re:\\.(js|css|png)$", "keyMode": "path",
+        "forceCache": true, "store": "assets" }
+    ]
+  },
+  "package": { "dir": "/tmp/sbc-packages", "manifestUrl": "" }
+})JSON";
+
+config::Config load_lenient(const std::string& text) {
+    auto doc = nlohmann::ordered_json::parse(text);
+    config::Config cfg = config::default_config();
+    config::from_json(doc, cfg);
+    cfg = config::normalize(std::move(cfg));
+    cfg.validate();
+    return cfg;
+}
+
+}  // namespace
+
+SBC_TEST(default_config_is_valid) {
+    auto cfg = config::default_config();
+    cfg.validate();
+    CHECK(cfg.server.port == 8080);
+    CHECK(cfg.mode == config::kModeReverseProxy);
+}
+
+SBC_TEST(load_sample_ignores_comment_fields) {
+    auto cfg = load_lenient(kSampleConfig);
+    CHECK(cfg.cache.stores.size() == 2);
+    CHECK(cfg.cache.rules.size() == 2);
+    CHECK(cfg.cache.rules[0].host == "claude.mods.bondage.club");
+    CHECK(cfg.cache.rules[0].key_mode == "path");
+    CHECK(cfg.cache.rules[0].force_cache);
+    CHECK(cfg.cache.rules[1].path_prefix == "/Assets/");
+}
+
+SBC_TEST(round_trip_preserves_fields) {
+    auto cfg = load_lenient(kSampleConfig);
+    nlohmann::ordered_json doc = cfg;
+    std::string text = doc.dump(2);
+    auto cfg2 = load_lenient(text);
+    CHECK(cfg2.upstream == cfg.upstream);
+    CHECK(cfg2.cache.stores.size() == cfg.cache.stores.size());
+    CHECK(cfg2.cache.rules.size() == cfg.cache.rules.size());
+    CHECK(cfg2.cache.rules[1].path_pattern == "re:\\.(js|css|png)$");
+}
+
+SBC_TEST(parse_strict_rejects_unknown_field) {
+    CHECK_THROWS(config::parse_strict(kSampleConfig));  // contains "_comment"
+    // Without the unknown field it should parse.
+    std::string clean = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
+        "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
+        "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
+    auto cfg = config::normalize(config::parse_strict(clean));
+    cfg.validate();
+    CHECK(cfg.server.port == 9000);
+}
+
+SBC_TEST(validate_rejects_bad_values) {
+    auto base = load_lenient(kSampleConfig);
+
+    auto bad_port = base;
+    bad_port.server.port = 70000;
+    CHECK_THROWS(bad_port.validate());
+
+    auto bad_mode = base;
+    bad_mode.mode = "nope";
+    CHECK_THROWS(bad_mode.validate());
+
+    auto dup_store = base;
+    dup_store.cache.stores.push_back({"assets", "", 0, std::nullopt});
+    CHECK_THROWS(dup_store.validate());
+
+    auto unknown_store = base;
+    cache::CacheRule r;
+    r.store = "ghost";
+    unknown_store.cache.rules.push_back(r);
+    CHECK_THROWS(unknown_store.validate());
+
+    auto bad_admin = base;
+    bad_admin.server.admin_base_path = "studio";  // missing slashes
+    CHECK_THROWS(bad_admin.validate());
+}
+
+SBC_TEST(upstream_gets_trailing_slash) {
+    Url u = config::parse_upstream("https://example.com/R129/BondageClub");
+    CHECK(u.path() == "/R129/BondageClub/");
+}
+
+SBC_TEST(socks5_parsing) {
+    CHECK(!config::parse_socks5_proxy("").has_value());
+    auto u = config::parse_socks5_proxy("127.0.0.1:1080");
+    CHECK(u.has_value());
+    CHECK(u->scheme() == "socks5");
+    CHECK(u->port() == 1080);
+    CHECK_THROWS(config::parse_socks5_proxy("http://127.0.0.1:8080"));
+    CHECK_THROWS(config::parse_socks5_proxy("127.0.0.1"));  // no port
+}
+
+SBC_TEST(glob_match_semantics) {
+    CHECK(cache::glob_match("*.js", "foo.js"));
+    CHECK(!cache::glob_match("*.js", "/a/foo.js"));  // '*' does not cross '/'
+    CHECK(cache::glob_match("foo?.js", "foo1.js"));
+    CHECK(!cache::glob_match("foo?.js", "foo.js"));
+    CHECK(cache::glob_match("[abc]at", "bat"));
+    CHECK(!cache::glob_match("[abc]at", "dat"));
+}
+
+SBC_TEST(game_settings_defaults_and_round_trip) {
+    config::Config cfg = config::default_config();
+    CHECK(cfg.game_server_settings.message_rate_per_sec == 20);
+    CHECK(cfg.game_server_settings.relationship_delay_ms == 604800000);
+    CHECK(cfg.game_server_settings.room_limit_max == 20);
+    cfg.validate();
+
+    // Edited values survive a to_json/from_json round trip.
+    cfg.game_server_settings.message_rate_per_sec = 7;
+    cfg.game_server_settings.ping_interval_ms = 12345;
+    nlohmann::ordered_json doc = cfg;
+    config::Config back = config::default_config();
+    config::from_json(doc, back);
+    CHECK(back.game_server_settings.message_rate_per_sec == 7);
+    CHECK(back.game_server_settings.ping_interval_ms == 12345);
+    CHECK(back.game_server_settings.room_limit_default == 10);  // untouched default
+}
+
+SBC_TEST(game_settings_validation) {
+    config::Config cfg = config::default_config();
+    cfg.game_server_settings.room_limit_min = 15;
+    cfg.game_server_settings.room_limit_max = 10;  // min > max
+    CHECK_THROWS(cfg.validate());
+
+    config::Config cfg2 = config::default_config();
+    cfg2.game_server_settings.message_rate_per_sec = 0;  // must be positive
+    CHECK_THROWS(cfg2.validate());
+}
+
+SBC_TEST(game_settings_strict_parse) {
+    // A known sub-key is accepted; an unknown one is rejected.
+    const char* ok = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
+        "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
+        "gameServerSettings":{"messageRatePerSec":9},
+        "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
+    auto cfg = config::normalize(config::parse_strict(ok));
+    CHECK(cfg.game_server_settings.message_rate_per_sec == 9);
+
+    const char* bad = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
+        "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
+        "gameServerSettings":{"nope":1},
+        "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
+    CHECK_THROWS(config::parse_strict(bad));
+}
