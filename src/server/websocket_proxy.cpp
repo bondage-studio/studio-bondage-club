@@ -14,10 +14,13 @@
 
 #include "net/tls.hpp"
 
-// Backend-specific Beast ↔ TLS-stream glue (websocket teardown over the secure
-// next layer). wintls carries its own teardown overloads via <wintls.hpp>;
-// the OpenSSL backend needs Beast's ssl teardown helpers.
-#ifndef _WIN32
+// Backend-specific Beast ↔ TLS-stream glue: Beast's websocket close path needs an
+// async_teardown overload for the secure next layer. wintls ships these in its
+// separate <wintls/beast.hpp> (not pulled in by <wintls.hpp>); the OpenSSL backend
+// uses Beast's own ssl teardown helpers.
+#ifdef _WIN32
+#include <wintls/beast.hpp>
+#else
 #include <boost/beast/websocket/ssl.hpp>
 #endif
 
