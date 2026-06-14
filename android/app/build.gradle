@@ -23,8 +23,12 @@ android {
         versionName '1.0'
 
         ndk {
-            // arm64 phones + the x86_64 emulator (per project decision).
-            abiFilters 'arm64-v8a', 'x86_64'
+            def sbcAbi = project.findProperty('sbcAbi')
+            if (sbcAbi) {
+                abiFilters(*sbcAbi.split(',').collect { it.trim() })
+            } else {
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
         }
 
         externalNativeBuild {
@@ -52,6 +56,18 @@ android {
         }
     }
 
+    def keystoreFile = System.getenv('SBC_KEYSTORE_FILE') ?: project.findProperty('sbcKeystoreFile')
+    signingConfigs {
+        release {
+            if (keystoreFile) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv('SBC_KEYSTORE_PASSWORD') ?: project.findProperty('sbcKeystorePassword')
+                keyAlias System.getenv('SBC_KEY_ALIAS') ?: project.findProperty('sbcKeyAlias')
+                keyPassword System.getenv('SBC_KEY_PASSWORD') ?: project.findProperty('sbcKeyPassword')
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Unsigned debug build (default debug signing config).
@@ -60,6 +76,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystoreFile) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

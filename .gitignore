@@ -16,3 +16,7 @@ vcpkg_installed/
 *.o
 *.obj
 compile_commands.json
+
+# Android signing keystore — never commit; keep a private backup
+*.keystore
+*.jks
