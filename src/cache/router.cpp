@@ -1,6 +1,7 @@
 #include "cache/router.hpp"
 
 #include <cstddef>
+#include <mutex>
 
 #include "common/error.hpp"
 #include "common/url.hpp"
