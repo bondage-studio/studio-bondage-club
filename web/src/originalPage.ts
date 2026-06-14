@@ -137,8 +137,6 @@ function installCommonServerHook() {
   (window as unknown as { CommonGetServer?: () => string }).CommonGetServer = () => window.location.origin;
 }
 
-// --- Built-in vs remote game-server switch ---------------------------------
-//
 // CommonGetServer() always returns our origin, so the local/remote choice can't
 // ride on its return value (socket.io would read a path there as a *namespace*,
 // not a distinct HTTP endpoint). Instead the backend exposes two stable paths —

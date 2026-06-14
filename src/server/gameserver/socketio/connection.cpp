@@ -346,9 +346,6 @@ asio::awaitable<void> Connection::ws_reader(websocket::stream<beast::tcp_stream>
                     push_locked(eio::Packet{eio::PacketType::Pong, pkt->data}.encode());
                     break;
                 case eio::PacketType::Pong:
-                    // DIAGNOSTIC: if on_strand is false here, the WS reader is NOT
-                    // running on the connection strand, so this write to
-                    // awaiting_pong_ races with the heartbeat loop on another thread.
                     spdlog::info("[eio {}] ws_reader: received PONG (on_strand={}, tid={})", sid_,
                                  strand_.running_in_this_thread(),
                                  std::hash<std::thread::id>{}(std::this_thread::get_id()));

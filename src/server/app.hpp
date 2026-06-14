@@ -4,6 +4,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <boost/asio/awaitable.hpp>
@@ -56,6 +57,15 @@ private:
 
     boost::asio::awaitable<cache::Stats> cache_stats();
     boost::asio::awaitable<void> clear_cache();
+    // expire_cache soft-expires matching entries across stores (keeps bodies so
+    // the next request revalidates). Empty filters match anything. Returns count.
+    boost::asio::awaitable<int> expire_cache(const std::string& store, const std::string& host,
+                                             const std::string& path_prefix,
+                                             const std::string& version);
+    // cache_versions returns version labels + counts, optionally limited to one
+    // store (empty = aggregate across all stores).
+    boost::asio::awaitable<std::vector<std::pair<std::string, int>>> cache_versions(
+        const std::string& store);
 
     static std::shared_ptr<host::Provider> provider_for(const config::Config& cfg,
                                                         const host::ProviderContext& ctx);

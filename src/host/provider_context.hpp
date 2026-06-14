@@ -3,7 +3,7 @@
 namespace sbc::net {
 class IoRuntime;
 class BlockingPool;
-class TlsContext;  // defined in P4
+class TlsContext;
 }  // namespace sbc::net
 
 namespace sbc::host {
@@ -13,7 +13,7 @@ namespace sbc::host {
 struct ProviderContext {
     net::IoRuntime* io = nullptr;
     net::BlockingPool* blocking = nullptr;
-    net::TlsContext* tls = nullptr;  // populated from P4 onward
+    net::TlsContext* tls = nullptr;
 };
 
 }  // namespace sbc::host

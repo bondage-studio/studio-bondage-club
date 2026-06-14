@@ -14,6 +14,7 @@
 #include "cache/key.hpp"
 #include "cache/leveldb_store.hpp"
 #include "cache/policy.hpp"
+#include "cache/version.hpp"
 #include "common/error.hpp"
 #include "net/blocking_pool.hpp"
 #include "net/http_client.hpp"
@@ -32,9 +33,9 @@ using cache::TimePoint;
 
 struct FetchResult {
     bool committed = false;
-    std::shared_ptr<cache::Backend> store; // for committed entries
-    Metadata meta; // committed metadata
-    fs::path temp_path; // uncacheable temp body
+    std::shared_ptr<cache::Backend> store;
+    Metadata meta;
+    fs::path temp_path;
     std::shared_ptr<cache::TempFileGuard> cleanup;
     Metadata temp_meta;
     std::string cache_status;
@@ -262,16 +263,29 @@ Provider::resolve_store(const Snapshot& snap, const cache::RouteAction& action) 
 }
 
 std::string Provider::cache_key(const Url& upstream, const Url& target,
-                                const cache::RouteAction& action) const {
-    if (action.key_mode == "path") {
+                                const cache::RouteAction& action,
+                                const std::string& version) const {
+    // For an immutable/content-addressed version (version_revalidate off), fold
+    // the version into the key so each version is its own permanent entry. For a
+    // revalidate version (the game's R-number) the key stays version-independent
+    // and the version is bridged by ETag revalidation instead.
+    std::string version_suffix;
+    if (!version.empty() && !action.version_revalidate) version_suffix = "\x1f" + version;
+
+    // A key_pattern rewrite (canonical key) or "path" key mode both key off the
+    // upstream-relative path rather than the full URL.
+    if (!action.key_pattern.empty() || action.key_mode == "path") {
         std::string tpath = target.path();
         std::string base = upstream.path();
         std::string real = tpath;
         if (!base.empty() && tpath.rfind(base, 0) == 0) real = tpath.substr(base.size());
         if (real.empty() || real.front() != '/') real = "/" + real;
-        return cache::key_from_path(real);
+        if (!action.key_pattern.empty()) {
+            real = cache::rewrite_key_path(real, action.key_pattern, action.key_template);
+        }
+        return cache::key_from_path(real + version_suffix);
     }
-    return cache::key(target.string());
+    return cache::key(target.string() + version_suffix);
 }
 
 Url Provider::target_url(const Url& upstream, const server::Request& req) const {
@@ -333,7 +347,8 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     }
 
     auto [store, ttl, max_bytes] = resolve_store(snap, action);
-    std::string key = cache_key(snap.upstream, target, action);
+    std::string version = cache::extract_version(action.version, target);
+    std::string key = cache_key(snap.upstream, target, action, version);
     auto now = Clock::now();
 
     std::optional<Metadata> cached;
@@ -344,7 +359,14 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
         spdlog::warn("ignore invalid cache entry key={} error={}", key, e.what());
     }
 
-    bool force_reval = cache::request_forces_revalidation(req.headers);
+    // For a revalidate-version rule (game), the version tag — not TTL — is the
+    // freshness signal: a mismatch (incl. a never-tagged entry, or a rollback)
+    // forces a conditional GET that 304s and reuses the body across a bump
+    // (R129 -> R130). Immutable versions instead live in the key, so a new
+    // version is a plain miss and never reaches this check.
+    bool version_mismatch =
+        action.version_revalidate && !version.empty() && cached && cached->version != version;
+    bool force_reval = cache::request_forces_revalidation(req.headers) || version_mismatch;
     if (cached && cached->fresh(now) && !force_reval) {
         schedule_touch(store, key, now);
         co_await serve_entry(req, w, store, *cached, "HIT", action.cache_control, false);
@@ -371,7 +393,7 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     bool failed = false;
     try {
         result = co_await flights_.do_call(
-            key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval,
+            key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
                   &req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
                 std::optional<Metadata> refreshed;
                 try {
@@ -380,11 +402,18 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
                 } catch (...) {
                     refreshed = std::nullopt;
                 }
-                if (refreshed && refreshed->fresh(Clock::now()) && !force_reval) {
+                bool reval = force_reval || (action.version_revalidate && !version.empty() &&
+                                             refreshed && refreshed->version != version);
+                if (refreshed && refreshed->fresh(Clock::now()) && !reval) {
                     co_return make_committed(store, *refreshed, "HIT", action.cache_control);
                 }
-                co_return co_await fetch(snap, target, key, store, ttl, max_bytes,
-                                         action.force_cache, action.cache_control, refreshed, req);
+                // Only revalidate-mode versions are recorded in metadata (and so
+                // surface in the versions/expire UI); immutable versions live in
+                // the key and need no tag.
+                co_return co_await fetch(
+                    snap, target, key, store, ttl, max_bytes, action.force_cache,
+                    action.cache_control, action.version_revalidate ? version : std::string(),
+                    refreshed, req);
             });
     } catch (const std::exception& e) {
         fetch_error = e.what();
@@ -410,7 +439,7 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
 asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
     std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache, std::string cache_control,
-    std::optional<Metadata> cached, server::Request& req) {
+    std::string version, std::optional<Metadata> cached, server::Request& req) {
     net::ClientRequest creq;
     creq.method = "GET";
     creq.target = target;
@@ -446,11 +475,12 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     if (resp.status == 304 && cached) {
         HeaderMap merged = merge_headers(cached->header, sanitize(resp.headers));
         auto updated = co_await net::run_blocking(
-            *ctx_.blocking, [store, key, merged, now, ttl]() {
+            *ctx_.blocking, [store, key, merged, now, ttl, version]() {
                 return store->update_metadata(key, [&](Metadata m) {
                     m.header = merged;
                     m.stored_at = now;
                     m.expires_at = cache::expiration(now, ttl);
+                    if (!version.empty()) m.version = version;
                     return m;
                 });
             });
@@ -471,6 +501,7 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     meta.header = sanitize(resp.headers);
     meta.stored_at = now;
     meta.expires_at = cache::expiration(now, ttl);
+    meta.version = version;
 
     bool cacheable = cache::response_cacheable("GET", creq.headers, resp.status, resp.headers) ||
                      (force_cache && resp.status == 200);
@@ -561,6 +592,7 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
     if (stale_warning) h.set("Warning", "110 - \"Response is stale\"");
     h.set("X-Studio-Cache", cache_status);
     h.set("X-Studio-Cache-Key", meta.key);
+    if (!meta.version.empty()) h.set("X-Studio-Cache-Version", meta.version);
     auto age = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - meta.stored_at)
                    .count();
     if (age < 0) age = 0;
@@ -616,7 +648,8 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
 
     cache::RouteAction action = router_->match(target, snap->upstream);
     auto [store, ttl, max_bytes] = resolve_store(*snap, action);
-    std::string key = cache_key(snap->upstream, target, action);
+    std::string version = cache::extract_version(action.version, target);
+    std::string key = cache_key(snap->upstream, target, action, version);
     auto now = Clock::now();
 
     std::optional<Metadata> cached;
@@ -627,7 +660,9 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
     }
 
     std::shared_ptr<FetchResult> result;
-    bool force_reval = cache::request_forces_revalidation(req.headers);
+    bool version_mismatch =
+        action.version_revalidate && !version.empty() && cached && cached->version != version;
+    bool force_reval = cache::request_forces_revalidation(req.headers) || version_mismatch;
     if (cached && cached->fresh(now) && !force_reval) {
         schedule_touch(store, key, now);
         result = make_committed(store, *cached, "HIT", action.cache_control);
@@ -636,7 +671,7 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         bool failed = false;
         try {
             result = co_await flights_.do_call(
-                key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval,
+                key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
                       &fetch_req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
                     std::optional<Metadata> refreshed;
                     try {
@@ -645,12 +680,15 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
                     } catch (...) {
                         refreshed = std::nullopt;
                     }
-                    if (refreshed && refreshed->fresh(Clock::now()) && !force_reval) {
+                    bool reval = force_reval || (action.version_revalidate && !version.empty() &&
+                                                 refreshed && refreshed->version != version);
+                    if (refreshed && refreshed->fresh(Clock::now()) && !reval) {
                         co_return make_committed(store, *refreshed, "HIT", action.cache_control);
                     }
-                    co_return co_await fetch(*snap, target, key, store, ttl, max_bytes,
-                                             action.force_cache, action.cache_control, refreshed,
-                                             fetch_req);
+                    co_return co_await fetch(
+                        *snap, target, key, store, ttl, max_bytes, action.force_cache,
+                        action.cache_control, action.version_revalidate ? version : std::string(),
+                        refreshed, fetch_req);
                 });
         } catch (const std::exception& e) {
             fetch_error = e.what();

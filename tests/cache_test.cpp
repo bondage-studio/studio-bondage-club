@@ -41,7 +41,6 @@ SBC_TEST(cache_key_is_sha256_hex) {
     CHECK(k.size() == 64);
     CHECK(k == cache::key("https://example.com/a.js"));
     CHECK(k != cache::key("https://example.com/b.js"));
-    // path key differs from url key for the same string content unless equal.
     CHECK(cache::key_from_path("/a.js") == cache::key("/a.js"));
 }
 
@@ -83,7 +82,7 @@ SBC_TEST(policy_forces_revalidation_and_expiration) {
     CHECK(request_forces_revalidation(h2));
 
     auto now = Clock::now();
-    CHECK(!expiration(now, std::chrono::seconds(0)).has_value());        // never expires
+    CHECK(!expiration(now, std::chrono::seconds(0)).has_value());
     CHECK(expiration(now, std::chrono::seconds(60)).has_value());
 }
 
@@ -92,7 +91,7 @@ SBC_TEST(leveldb_store_roundtrip) {
     auto store = LevelDbStore::open("default", dir.string());
 
     std::string key = cache::key("https://example.com/a.js");
-    CHECK(!store->get(key).has_value());  // miss
+    CHECK(!store->get(key).has_value());
 
     auto writer = store->new_writer(key);
     writer->write("hello ");
@@ -114,12 +113,76 @@ SBC_TEST(leveldb_store_roundtrip) {
     CHECK(s.entries == 1);
     CHECK(s.bytes == 11);
 
-    // touch updates last-accessed without error.
     store->touch(key, Clock::now());
 
     store->clear();
     CHECK(store->stats().entries == 0);
     CHECK(!store->get(key).has_value());
+
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+SBC_TEST(leveldb_store_version_roundtrip) {
+    auto dir = make_temp_dir("ver");
+    auto store = LevelDbStore::open("default", dir.string());
+
+    std::string key = cache::key("https://example.com/v.js");
+    auto w = store->new_writer(key);
+    w->write("x");
+    Metadata m = sample_meta(key);
+    m.version = "R129";
+    w->commit(m);
+
+    auto got = store->get(key);
+    CHECK(got.has_value());
+    CHECK(got->version == "R129");
+
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+SBC_TEST(leveldb_store_expire_and_versions) {
+    auto dir = make_temp_dir("expire");
+    auto store = LevelDbStore::open("default", dir.string());
+
+    auto put = [&](const std::string& url, const std::string& version) {
+        std::string k = cache::key(url);
+        auto w = store->new_writer(k);
+        w->write("body");
+        Metadata m = sample_meta(k);
+        m.url = url;
+        m.version = version;
+        m.expires_at = std::nullopt;
+        w->commit(m);
+        return k;
+    };
+
+    std::string k129a = put("https://example.com/a", "R129");
+    std::string k129b = put("https://example.com/b", "R129");
+    std::string k130 = put("https://example.com/c", "R130");
+
+    auto vers = store->versions();
+    CHECK(vers.size() == 2);
+    CHECK(vers[0].first == "R129");
+    CHECK(vers[0].second == 2);
+    CHECK(vers[1].first == "R130");
+    CHECK(vers[1].second == 1);
+
+    auto when = Clock::now() - std::chrono::hours(1);
+    int n = store->expire([](const Metadata& m) { return m.version == "R129"; }, when);
+    CHECK(n == 2);
+
+    auto a = store->get(k129a);
+    CHECK(a.has_value());
+    CHECK(a->expires_at.has_value());
+    CHECK(!a->fresh(Clock::now()));
+    CHECK(store->open_body(k129a) == "body");
+
+    auto c = store->get(k130);
+    CHECK(c.has_value());
+    CHECK(!c->expires_at.has_value());
+    CHECK(c->fresh(Clock::now()));
 
     std::error_code ec;
     fs::remove_all(dir, ec);
@@ -140,11 +203,11 @@ SBC_TEST(leveldb_store_lru_eviction) {
     };
 
     auto t0 = Clock::now();
-    put("https://example.com/old", "AAAAAAAAAA", t0);                       // 10 bytes, oldest
-    put("https://example.com/new", "BBBBBBBBBB", t0 + std::chrono::hours(1));  // 10 bytes, newest
+    put("https://example.com/old", "AAAAAAAAAA", t0);
+    put("https://example.com/new", "BBBBBBBBBB", t0 + std::chrono::hours(1));
 
     CHECK(store->stats().bytes == 20);
-    store->enforce_max_size(10);  // must evict the older entry
+    store->enforce_max_size(10);
     Stats s = store->stats();
     CHECK(s.entries == 1);
     CHECK(s.bytes == 10);

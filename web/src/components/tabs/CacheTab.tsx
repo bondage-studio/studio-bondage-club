@@ -5,6 +5,7 @@ import { Input } from "../ui/input";
 import { FormField } from "../shared/FormField";
 import { Panel } from "../shared/Panel";
 import { StoreCard } from "../cache/StoreCard";
+import { CacheMaintenance } from "../cache/CacheMaintenance";
 import { formatBytes } from "../../lib/utils";
 import type { AppConfig, StatsEvent } from "../../types";
 
@@ -197,6 +198,8 @@ export function CacheTab({
                     {rule.bypass && <Badge variant="destructive">bypass</Badge>}
                     {rule.forceCache && <Badge variant="default">force</Badge>}
                     {rule.keyMode === "path" && <Badge variant="secondary">key:path</Badge>}
+                    {rule.version && <Badge variant="outline">ver:{rule.version}</Badge>}
+                    {rule.keyPattern && <Badge variant="outline">key-rewrite</Badge>}
                     {rule.store && <Badge variant="secondary">→{rule.store}</Badge>}
                   </div>
                   <div className="flex shrink-0 gap-1">
@@ -246,6 +249,8 @@ export function CacheTab({
           </div>
         )}
       </Panel>
+
+      <CacheMaintenance />
     </div>
   );
 }

@@ -25,6 +25,7 @@ struct Metadata {
     std::optional<TimePoint> expires_at;  // nullopt -> never expires (Go zero time)
     std::int64_t body_size = 0;
     std::string body_sha256;
+    std::string version;  // source version label ("" -> not version-tracked)
 
     // fresh reports whether the entry is still within its TTL.
     bool fresh(TimePoint now) const {

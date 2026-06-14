@@ -1,21 +1,37 @@
+import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Window } from "../ui/window";
 
 interface Props {
   oldDir: string;
   newDir: string;
+  title?: string;
+  intro?: string;
+  body?: ReactNode;
   onChoose: (migrate: boolean) => void;
   onClose: () => void;
 }
 
-/** Confirms whether to migrate existing cache + game data on a cache-dir change. */
-export function CacheMigrateDialog({ oldDir, newDir, onChoose, onClose }: Props) {
+export function CacheMigrateDialog({
+  oldDir,
+  newDir,
+  title = "Move cache data?",
+  intro = "The cache directory is changing:",
+  body = (
+    <>
+      Migrate the existing cache <strong>and local game accounts</strong> to the new location, or
+      start fresh there? Either way the change rebuilds the cache stores.
+    </>
+  ),
+  onChoose,
+  onClose
+}: Props) {
   return (
     <Window onClose={onClose} defaultWidth={460} defaultHeight={320} minWidth={380} minHeight={260}>
-      <Window.Title>Move cache data?</Window.Title>
+      <Window.Title>{title}</Window.Title>
       <Window.Body className="overflow-y-auto p-4">
         <div className="grid gap-3 text-sm">
-          <p className="text-muted-foreground">The cache directory is changing:</p>
+          <p className="text-muted-foreground">{intro}</p>
           <div className="grid gap-1 rounded-md border bg-muted px-3 py-2 text-xs">
             <p>
               From: <span className="break-all text-foreground">{oldDir}</span>
@@ -24,10 +40,7 @@ export function CacheMigrateDialog({ oldDir, newDir, onChoose, onClose }: Props)
               To: <span className="break-all text-foreground">{newDir}</span>
             </p>
           </div>
-          <p>
-            Migrate the existing cache <strong>and local game accounts</strong> to the new location,
-            or start fresh there? Either way the change rebuilds the cache stores.
-          </p>
+          <p>{body}</p>
         </div>
       </Window.Body>
       <Window.Footer>

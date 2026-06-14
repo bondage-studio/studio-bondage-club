@@ -15,6 +15,10 @@ void to_json(nlohmann::ordered_json& j, const CacheRule& r) {
     if (!r.key_mode.empty()) j["keyMode"] = r.key_mode;
     if (!r.cache_control.empty()) j["cacheControl"] = r.cache_control;
     if (r.force_cache) j["forceCache"] = true;
+    if (!r.version.empty()) j["version"] = r.version;
+    if (!r.key_pattern.empty()) j["keyPattern"] = r.key_pattern;
+    if (!r.key_template.empty()) j["keyTemplate"] = r.key_template;
+    if (r.version_revalidate) j["versionRevalidate"] = true;
 }
 
 void from_json(const nlohmann::ordered_json& j, CacheRule& r) {
@@ -30,6 +34,10 @@ void from_json(const nlohmann::ordered_json& j, CacheRule& r) {
     if (auto it = j.find("keyMode"); it != j.end()) r.key_mode = it->get<std::string>();
     if (auto it = j.find("cacheControl"); it != j.end()) r.cache_control = it->get<std::string>();
     if (auto it = j.find("forceCache"); it != j.end()) r.force_cache = it->get<bool>();
+    if (auto it = j.find("version"); it != j.end()) r.version = it->get<std::string>();
+    if (auto it = j.find("keyPattern"); it != j.end()) r.key_pattern = it->get<std::string>();
+    if (auto it = j.find("keyTemplate"); it != j.end()) r.key_template = it->get<std::string>();
+    if (auto it = j.find("versionRevalidate"); it != j.end()) r.version_revalidate = it->get<bool>();
 }
 
 }  // namespace sbc::cache

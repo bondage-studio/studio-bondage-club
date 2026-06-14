@@ -10,7 +10,9 @@
 #include <atomic>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include "common/error.hpp"
@@ -53,6 +55,7 @@ std::string metadata_to_json(const Metadata& meta) {
     j["expiresAt"] = meta.expires_at.has_value() ? to_millis(*meta.expires_at) : 0;
     j["bodySize"] = meta.body_size;
     j["bodySha256"] = meta.body_sha256;
+    if (!meta.version.empty()) j["version"] = meta.version;
     return j.dump();
 }
 
@@ -75,6 +78,7 @@ Metadata metadata_from_json(const std::string& text) {
     if (exp != 0) meta.expires_at = from_millis(exp);
     meta.body_size = j.value("bodySize", std::int64_t{0});
     meta.body_sha256 = j.value("bodySha256", "");
+    meta.version = j.value("version", "");
     return meta;
 }
 
@@ -320,6 +324,47 @@ void LevelDbStore::enforce_max_size(std::int64_t max_bytes) {
     wo.sync = true;
     leveldb::Status s = db_->Write(wo, &batch);
     if (!s.ok()) throw Error("leveldb evict: " + s.ToString());
+}
+
+int LevelDbStore::expire(const std::function<bool(const Metadata&)>& match, TimePoint when) {
+    std::lock_guard<std::mutex> lock(write_mu_);
+    leveldb::WriteBatch batch;
+    int affected = 0;
+    {
+        std::unique_ptr<leveldb::Iterator> it(db_->NewIterator(leveldb::ReadOptions()));
+        for (it->Seek("m/"); it->Valid() && starts_with(it->key(), "m/"); it->Next()) {
+            Metadata meta;
+            try {
+                meta = metadata_from_json(it->value().ToString());
+            } catch (...) {
+                continue;
+            }
+            if (!match(meta)) continue;
+            meta.expires_at = when;
+            batch.Put(it->key(), metadata_to_json(meta));
+            ++affected;
+        }
+    }
+    if (affected == 0) return 0;
+    leveldb::WriteOptions wo;
+    wo.sync = true;
+    leveldb::Status s = db_->Write(wo, &batch);
+    if (!s.ok()) throw Error("leveldb expire: " + s.ToString());
+    return affected;
+}
+
+std::vector<std::pair<std::string, int>> LevelDbStore::versions() {
+    std::map<std::string, int> counts;
+    std::unique_ptr<leveldb::Iterator> it(db_->NewIterator(leveldb::ReadOptions()));
+    for (it->Seek("m/"); it->Valid() && starts_with(it->key(), "m/"); it->Next()) {
+        try {
+            Metadata meta = metadata_from_json(it->value().ToString());
+            if (!meta.version.empty()) counts[meta.version]++;
+        } catch (...) {
+            // skip invalid entry
+        }
+    }
+    return {counts.begin(), counts.end()};
 }
 
 }  // namespace sbc::cache

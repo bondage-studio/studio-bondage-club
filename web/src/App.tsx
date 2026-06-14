@@ -35,8 +35,6 @@ import type {
   StoreConfig
 } from "./types";
 
-// Each tab maps 1:1 to a backend config scope, so its Save/Refresh act only on
-// that slice (PUT /api/config/{scope}) without touching the others.
 type PanelTab = ConfigScopeName;
 
 const pages: { id: PanelTab; icon: ReactNode; label: string; description: string }[] = [
@@ -89,18 +87,14 @@ function App() {
 
   const { stats: sseStats, connected } = useSSE();
 
-  // Store editor state
   const [storeEditorOpen, setStoreEditorOpen] = useState(false);
   const [editingStoreIdx, setEditingStoreIdx] = useState<number | null>(null);
 
-  // Rule editor state
   const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
   const [editingRuleIdx, setEditingRuleIdx] = useState<number | null>(null);
 
-  // Cache-dir migration prompt (shown when the cache directory changed on save).
-  const [migratePrompt, setMigratePrompt] = useState(false);
+  const [migrateScope, setMigrateScope] = useState<ConfigScopeName | null>(null);
 
-  // Game server live status (polled while the Game Server tab is open).
   const [gameStatus, setGameStatus] = useState<GameServerStatus | null>(null);
 
   // Runtime local/remote game-server switch. Owned by the frontend (persisted to
@@ -214,10 +208,21 @@ function App() {
   function handleSaveCache() {
     if (!form || !snapshot) return;
     if (form.cache.dir !== snapshot.config.cache.dir) {
-      setMigratePrompt(true);
+      setMigrateScope("cache");
       return;
     }
     void saveScope("cache");
+  }
+
+  // Game-server save intercepts a storage-path change to ask about migrating the
+  // account database (mirrors the cache-dir flow).
+  function handleSaveGameServer() {
+    if (!form || !snapshot) return;
+    if (form.gameServerStoragePath !== snapshot.config.gameServerStoragePath) {
+      setMigrateScope("gameserver");
+      return;
+    }
+    void saveScope("gameserver");
   }
 
   async function handleClearCache() {
@@ -242,7 +247,6 @@ function App() {
     });
   }
 
-  // Store CRUD
   function openAddStore() {
     setEditingStoreIdx(null);
     setStoreEditorOpen(true);
@@ -268,7 +272,6 @@ function App() {
     });
   }
 
-  // Rule CRUD
   function openAddRule() {
     setEditingRuleIdx(null);
     setRuleEditorOpen(true);
@@ -349,7 +352,6 @@ function App() {
         </Window.Title>
         <Window.Footer>{footer}</Window.Footer>
         <Window.Body className="flex-row">
-          {/* Category sidebar */}
           <nav className="flex w-40 shrink-0 flex-col gap-px border-r bg-muted p-1.5">
             {pages.map(({ id, icon, label }) => {
               const active = tab === id;
@@ -388,7 +390,6 @@ function App() {
             })}
           </nav>
 
-          {/* Content pane */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background px-4 py-2">
               <div className="min-w-0">
@@ -401,7 +402,13 @@ function App() {
                 dirty={sectionDirty(tab)}
                 busy={busy}
                 onRefresh={() => void refreshScope(tab)}
-                onSave={tab === "cache" ? handleSaveCache : () => void saveScope(tab)}
+                onSave={
+                  tab === "cache"
+                    ? handleSaveCache
+                    : tab === "gameserver"
+                      ? handleSaveGameServer
+                      : () => void saveScope(tab)
+                }
               />
             </div>
 
@@ -433,9 +440,11 @@ function App() {
                     )}
                     {tab === "gameserver" && (
                       <GameServerTab
+                        form={form}
                         serverMode={serverMode}
                         gameStatus={gameStatus}
                         onSwitchMode={switchServerMode}
+                        onChange={updateConfig}
                       />
                     )}
                     {tab === "gamesettings" && (
@@ -475,15 +484,34 @@ function App() {
           onClose={() => setRuleEditorOpen(false)}
         />
       )}
-      {form && snapshot && migratePrompt && (
+      {form && snapshot && migrateScope === "cache" && (
         <CacheMigrateDialog
           oldDir={snapshot.config.cache.dir}
           newDir={form.cache.dir}
           onChoose={(migrate) => {
-            setMigratePrompt(false);
+            setMigrateScope(null);
             void saveScope("cache", migrate);
           }}
-          onClose={() => setMigratePrompt(false)}
+          onClose={() => setMigrateScope(null)}
+        />
+      )}
+      {form && snapshot && migrateScope === "gameserver" && (
+        <CacheMigrateDialog
+          title="Move game accounts?"
+          intro="The game server storage path is changing:"
+          oldDir={snapshot.config.gameServerStoragePath || `${snapshot.config.cache.dir || "."}/gameserver`}
+          newDir={form.gameServerStoragePath || `${form.cache.dir || "."}/gameserver`}
+          body={
+            <>
+              Migrate the existing <strong>local game accounts</strong> to the new location, or start
+              fresh there? Live game sockets reconnect either way.
+            </>
+          }
+          onChoose={(migrate) => {
+            setMigrateScope(null);
+            void saveScope("gameserver", migrate);
+          }}
+          onClose={() => setMigrateScope(null)}
         />
       )}
     </>

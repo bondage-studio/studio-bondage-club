@@ -1,6 +1,8 @@
 import type {
+  CacheVersion,
   ConfigResponse,
   ConfigScopeName,
+  ExpireFilter,
   GameServerStatus,
   ScopeUpdateResponse
 } from "./types";
@@ -35,7 +37,8 @@ export function loadConfig(): Promise<ConfigResponse> {
 /**
  * Save a single config scope (per-section). The server merges the slice into the
  * live config, validates the whole, and fires reload work only for this scope.
- * `migrate` is honoured only by the cache scope when its directory changed.
+ * `migrate` is honoured by the cache scope (cache dir change) and the gameserver
+ * scope (game storage path change) to move existing data to the new location.
  */
 export function saveConfigScope(
   scope: ConfigScopeName,
@@ -51,6 +54,23 @@ export function saveConfigScope(
 
 export function clearCache(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/api/cache/clear", { method: "POST" });
+}
+
+/**
+ * Soft-expire matching cache entries (keeps bodies so the next request
+ * revalidates via ETag). Empty filter fields match anything. Returns the count.
+ */
+export function expireCache(filter: ExpireFilter): Promise<{ ok: boolean; expired: number }> {
+  return request<{ ok: boolean; expired: number }>("/api/cache/expire", {
+    method: "POST",
+    body: JSON.stringify(filter)
+  });
+}
+
+/** List distinct source versions held in a store (empty = aggregate all stores). */
+export function listVersions(store?: string): Promise<CacheVersion[]> {
+  const query = store ? `?store=${encodeURIComponent(store)}` : "";
+  return request<CacheVersion[]>(`/api/cache/versions${query}`);
 }
 
 export function loadGameServerStatus(): Promise<GameServerStatus & { enabled: boolean }> {

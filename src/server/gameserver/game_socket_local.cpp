@@ -7,7 +7,7 @@ namespace sbc::server {
 boost::asio::awaitable<void> serve_game_socket_local(Request& req, ResponseWriter& w,
                                                      gameserver::socketio::SocketIoServer& hub,
                                                      boost::asio::any_io_executor ex) {
-    (void)ex;  // reserved for the Phase 3 WebSocket upgrade path
+    (void)ex;
     co_await hub.handle_request(req, w);
 }
 

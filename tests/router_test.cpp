@@ -38,13 +38,11 @@ SBC_TEST(router_matches_host_prefix_pattern) {
         Url::parse("https://bondage-europe.com/R129/BondageClub/Assets/dir/a.js"), base);
     CHECK(a2.store_name == "assets");
 
-    // Prefix matches but pattern does not -> falls through to default action.
     auto a3 = router.match(
         Url::parse("https://bondage-europe.com/R129/BondageClub/Assets/a.bin"), base);
     CHECK(a3.store_name.empty());
     CHECK(!a3.bypass);
 
-    // No rule matches at all.
     auto a4 = router.match(Url::parse("https://other.example/whatever"), base);
     CHECK(a4.store_name.empty());
 }
@@ -64,6 +62,43 @@ SBC_TEST(router_bypass_and_ttl) {
     auto t = router.match(Url::parse("https://h.example/short/x"), base);
     CHECK(!t.bypass);
     CHECK(t.ttl == std::chrono::seconds(30));
+}
+
+SBC_TEST(router_carries_version_and_key_rewrite) {
+    CacheRule echo;
+    echo.host = "sugarchain-studio.github.io";
+    echo.version = "query:v";
+    echo.key_pattern = "re:^/(echo-(?:clothing|activity)-ext)/(.*)$";
+    echo.key_template = "$1/$2";
+    CacheRule game;
+    game.path_pattern = "re:\\.js$";
+    game.version = "re:/(R\\d+)/BondageClub/";
+    game.version_revalidate = true;
+
+    PolicyRouter router({echo, game});
+    Url base = Url::parse("https://bondage-europe.com/R129/BondageClub/");
+    auto a = router.match(
+        Url::parse("https://sugarchain-studio.github.io/echo-clothing-ext/Manifest.json?v=1"), base);
+    CHECK(a.version == "query:v");
+    CHECK(a.key_pattern == "re:^/(echo-(?:clothing|activity)-ext)/(.*)$");
+    CHECK(a.key_template == "$1/$2");
+    CHECK(!a.version_revalidate);
+
+    auto g = router.match(
+        Url::parse("https://bondage-europe.com/R129/BondageClub/Scripts/Main.js"), base);
+    CHECK(g.version_revalidate);
+}
+
+SBC_TEST(router_rejects_invalid_version_regex) {
+    CacheRule bad;
+    bad.host = "h.example";
+    bad.version = "re:([";
+    CHECK_THROWS(PolicyRouter({bad}));
+
+    CacheRule bad_key;
+    bad_key.host = "h.example";
+    bad_key.key_pattern = "re:([";
+    CHECK_THROWS(PolicyRouter({bad_key}));
 }
 
 SBC_TEST(router_update_swaps_rules) {

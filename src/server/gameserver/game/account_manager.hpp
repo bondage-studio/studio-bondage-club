@@ -54,7 +54,6 @@ public:
     // connected socket and sends it the initial ServerInfo.
     void on_socket_connected(std::shared_ptr<socketio::Socket> socket);
 
-    // Lookup helpers (used by ChatRoomManager in Phase 6).
     std::shared_ptr<OnlineAccount> get_by_socket(const std::string& id);
     std::shared_ptr<OnlineAccount> get_by_member(std::int64_t member_number);
 

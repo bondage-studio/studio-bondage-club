@@ -4,7 +4,7 @@
   "configurePresets": [
     {
       "name": "default",
-      "displayName": "Default (vcpkg in ./.vcpkg, static libs)",
+      "displayName": "Default (vcpkg in ./.vcpkg, static deps + dynamic runtime)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
@@ -18,6 +18,35 @@
       "displayName": "Debug",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
     },
+
+    {
+      "name": "static",
+      "inherits": "default",
+      "displayName": "Static (deps + C/C++ runtime linked statically; self-contained binary)",
+      "cacheVariables": { "SBC_STATIC_RUNTIME": "ON" }
+    },
+    {
+      "name": "static-windows",
+      "inherits": "static",
+      "displayName": "Static — Windows (x64-windows-static: static deps + static CRT)",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-windows-static" }
+    },
+
+    {
+      "name": "dynamic",
+      "inherits": "default",
+      "displayName": "Dynamic runtime (shared C/C++ runtime; deps follow the triplet)",
+      "cacheVariables": { "SBC_STATIC_RUNTIME": "OFF" }
+    },
+    {
+      "name": "dynamic-windows",
+      "inherits": "dynamic",
+      "displayName": "Dynamic — Windows (x64-windows: shared deps + shared CRT)",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-windows" }
+    },
+
     {
       "name": "system",
       "displayName": "System libs — Homebrew dylibs, no vcpkg (macOS)",
@@ -33,10 +62,16 @@
   "buildPresets": [
     { "name": "default", "configurePreset": "default" },
     { "name": "debug", "configurePreset": "debug" },
+    { "name": "static", "configurePreset": "static" },
+    { "name": "static-windows", "configurePreset": "static-windows" },
+    { "name": "dynamic", "configurePreset": "dynamic" },
+    { "name": "dynamic-windows", "configurePreset": "dynamic-windows" },
     { "name": "system", "configurePreset": "system" }
   ],
   "testPresets": [
     { "name": "default", "configurePreset": "default", "output": { "outputOnFailure": true } },
+    { "name": "static", "configurePreset": "static", "output": { "outputOnFailure": true } },
+    { "name": "dynamic", "configurePreset": "dynamic", "output": { "outputOnFailure": true } },
     { "name": "system", "configurePreset": "system", "output": { "outputOnFailure": true } }
   ]
 }

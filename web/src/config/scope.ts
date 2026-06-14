@@ -23,7 +23,10 @@ export function scopeSlice(cfg: AppConfig, scope: ConfigScopeName): unknown {
     case "cache":
       return cfg.cache;
     case "gameserver":
-      return { localGameServer: cfg.localGameServer };
+      return {
+        localGameServer: cfg.localGameServer,
+        gameServerStoragePath: cfg.gameServerStoragePath
+      };
     case "gamesettings":
       return cfg.gameServerSettings;
     case "mode":
@@ -49,6 +52,7 @@ export function copyScope(dst: AppConfig, src: AppConfig, scope: ConfigScopeName
       break;
     case "gameserver":
       dst.localGameServer = src.localGameServer;
+      dst.gameServerStoragePath = src.gameServerStoragePath;
       break;
     case "gamesettings":
       dst.gameServerSettings = structuredClone(src.gameServerSettings);

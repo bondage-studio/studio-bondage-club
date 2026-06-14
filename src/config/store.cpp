@@ -97,7 +97,7 @@ Config Store::load() {
     }
 
     Config cfg = default_config();
-    from_json(doc, cfg);  // lenient: ignores unknown keys (e.g. "_comment")
+    from_json(doc, cfg);
     cfg = normalize(std::move(cfg));
     cfg.validate();
     return cfg;

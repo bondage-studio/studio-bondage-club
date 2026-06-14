@@ -23,6 +23,18 @@ export interface CacheRule {
   keyMode?: "url" | "path";
   cacheControl?: string;
   forceCache?: boolean;
+  /** Version extractor spec: "query:<name>" or "re:<regexp>" over the target URL. */
+  version?: string;
+  /** "re:<regexp>" matched against the real path to build a canonical cache key. */
+  keyPattern?: string;
+  /** std::regex_replace template ($1-style refs) producing the canonical key. */
+  keyTemplate?: string;
+  /**
+   * How the version is used. false (default): immutable — folded into the key so
+   * each version is its own permanent entry. true: freshness signal for a
+   * version-independent key (ETag revalidation on change, e.g. the game body).
+   */
+  versionRevalidate?: boolean;
 }
 
 export interface CacheConfig {
@@ -70,12 +82,13 @@ export interface AppConfig {
   upstream: string;
   socks5Proxy: string;
   localGameServer: boolean;
+  /** Embedded game DB location; empty means "<cache dir>/gameserver". */
+  gameServerStoragePath: string;
   gameServerSettings: GameServerSettings;
   cache: CacheConfig;
   package: PackageConfig;
 }
 
-/** Config scope keys for the per-section save/refresh endpoints. */
 export type ConfigScopeName =
   | "connection"
   | "cache"
@@ -84,7 +97,6 @@ export type ConfigScopeName =
   | "mode"
   | "package";
 
-/** Response from PUT /api/config/{scope}. */
 export interface ScopeUpdateResponse {
   scope: ConfigScopeName;
   slice: Record<string, unknown>;
@@ -137,4 +149,16 @@ export interface StatsEvent {
   type: "stats";
   stores: StoreStat[];
   total: CacheStats;
+}
+
+export interface CacheVersion {
+  version: string;
+  entries: number;
+}
+
+export interface ExpireFilter {
+  store?: string;
+  host?: string;
+  pathPrefix?: string;
+  version?: string;
 }

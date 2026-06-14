@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "cache/metadata.hpp"
 
@@ -64,6 +65,15 @@ public:
     virtual void clear() = 0;
     virtual Stats stats() = 0;
     virtual void enforce_max_size(std::int64_t max_bytes) = 0;
+
+    // expire sets expires_at = `when` on every entry the predicate accepts,
+    // keeping bodies so the next request revalidates via ETag/Last-Modified.
+    // Returns the number of entries affected.
+    virtual int expire(const std::function<bool(const Metadata&)>& match, TimePoint when) = 0;
+
+    // versions returns the distinct version labels currently held and their entry
+    // counts (entries with an empty version are omitted), sorted by label.
+    virtual std::vector<std::pair<std::string, int>> versions() = 0;
 };
 
 }  // namespace sbc::cache

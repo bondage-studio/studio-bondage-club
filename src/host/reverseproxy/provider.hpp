@@ -70,8 +70,8 @@ private:
 
     std::tuple<std::shared_ptr<cache::Backend>, std::chrono::seconds, std::int64_t> resolve_store(
         const Snapshot& snap, const cache::RouteAction& action) const;
-    std::string cache_key(const Url& upstream, const Url& target,
-                          const cache::RouteAction& action) const;
+    std::string cache_key(const Url& upstream, const Url& target, const cache::RouteAction& action,
+                          const std::string& version) const;
     Url target_url(const Url& upstream, const server::Request& req) const;
 
     boost::asio::awaitable<void> serve_target(server::Request& req, server::ResponseWriter& w,
@@ -79,7 +79,8 @@ private:
     boost::asio::awaitable<std::shared_ptr<FetchResult>> fetch(
         const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
         std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache,
-        std::string cache_control, std::optional<cache::Metadata> cached, server::Request& req);
+        std::string cache_control, std::string version, std::optional<cache::Metadata> cached,
+        server::Request& req);
     boost::asio::awaitable<void> proxy_pass(server::Request& req, server::ResponseWriter& w,
                                             const Snapshot& snap, const Url& target,
                                             std::string cache_status);

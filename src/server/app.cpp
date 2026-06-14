@@ -80,6 +80,23 @@ ordered_json stats_json(const cache::Stats& s) {
     return j;
 }
 
+// query_value returns the first value of query parameter `name` from a raw query
+// string ("a=1&b=2"), or "" if absent.
+std::string query_value(const std::string& raw_query, const std::string& name) {
+    std::size_t pos = 0;
+    while (pos <= raw_query.size()) {
+        std::size_t amp = raw_query.find('&', pos);
+        std::string pair = raw_query.substr(
+            pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        std::size_t eq = pair.find('=');
+        std::string key = eq == std::string::npos ? pair : pair.substr(0, eq);
+        if (key == name) return eq == std::string::npos ? std::string() : pair.substr(eq + 1);
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    return std::string();
+}
+
 ordered_json status_json(const host::RuntimeStatus& s) {
     ordered_json j;
     j["mode"] = s.mode;
@@ -117,9 +134,9 @@ ordered_json modes_json() {
     return arr;
 }
 
-// migrate_dir moves the cache data tree from old_dir to new_dir, preserving the
-// embedded game DB (a subdirectory). Used when the user opts to migrate on a
-// cache.dir change. No-op if old_dir is missing; merges into an existing new_dir.
+// migrate_dir moves a data tree from old_dir to new_dir. Used when the user opts
+// to migrate on a cache.dir or game-storage-path change. No-op if old_dir is
+// missing; merges into an existing new_dir.
 void migrate_dir(const std::string& old_dir, const std::string& new_dir) {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -132,7 +149,7 @@ void migrate_dir(const std::string& old_dir, const std::string& new_dir) {
     fs::create_directories(new_dir, ec);
     fs::copy(old_dir, new_dir,
              fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-    if (ec) throw Error("migrate cache dir " + old_dir + " -> " + new_dir + ": " + ec.message());
+    if (ec) throw Error("migrate dir " + old_dir + " -> " + new_dir + ": " + ec.message());
     fs::remove_all(old_dir, ec);
 }
 
@@ -163,8 +180,7 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     : store_(store), ctx_(std::move(ctx)) {
     active_address_ = cfg.server.address();
     assets_ = default_asset_source();
-    std::string game_dir =
-        (std::filesystem::path(cfg.cache.dir.empty() ? "." : cfg.cache.dir) / "gameserver").string();
+    std::string game_dir = config::game_storage_dir(cfg);
     game_ = std::make_shared<gameserver::GameApp>(ctx_.io->executor(), *ctx_.blocking, game_dir,
                                                   cfg.game_server_settings);
     auto provider = provider_for(cfg, ctx_);
@@ -287,7 +303,6 @@ asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const Sta
             co_await method_not_allowed(w);
         }
     } else if (path.rfind("/api/config/", 0) == 0) {
-        // Per-scope reload: PUT /api/config/{scope} updates just that slice.
         if (req.method == "PUT") {
             co_await handle_put_config_scope(req, w, path.substr(std::string("/api/config/").size()));
         } else {
@@ -315,6 +330,48 @@ asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const Sta
         ordered_json j;
         j["ok"] = true;
         co_await write_json(w, 200, j);
+    } else if (path == "/api/cache/expire") {
+        if (req.method != "POST") {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::string store, host, path_prefix, version;
+        std::string parse_error;
+        if (!req.body.empty()) {
+            try {
+                ordered_json body = ordered_json::parse(req.body);
+                store = body.value("store", "");
+                host = body.value("host", "");
+                path_prefix = body.value("pathPrefix", "");
+                version = body.value("version", "");
+            } catch (const std::exception& e) {
+                parse_error = e.what();
+            }
+        }
+        if (!parse_error.empty()) {
+            co_await write_error(w, 400, std::string("decode body: ") + parse_error);
+            co_return;
+        }
+        int expired = co_await expire_cache(store, host, path_prefix, version);
+        ordered_json j;
+        j["ok"] = true;
+        j["expired"] = expired;
+        co_await write_json(w, 200, j);
+    } else if (path == "/api/cache/versions") {
+        if (!req.is_get()) {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::string store = query_value(req.raw_query, "store");
+        auto versions = co_await cache_versions(store);
+        ordered_json arr = ordered_json::array();
+        for (const auto& [ver, count] : versions) {
+            ordered_json e;
+            e["version"] = ver;
+            e["entries"] = count;
+            arr.push_back(std::move(e));
+        }
+        co_await write_json(w, 200, arr);
     } else if (path == "/api/events") {
         if (!req.is_get()) {
             co_await method_not_allowed(w);
@@ -477,8 +534,6 @@ asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter&
 
 void App::register_scopes() {
     using cfg_t = config::Config;
-    // connection: listener address + upstream/proxy/remote-game targets. Address
-    // (host/port) needs a process restart; the rest update the provider live.
     scopes_.push_back(ConfigScope{
         "connection",
         [](const cfg_t& c) {
@@ -506,7 +561,6 @@ void App::register_scopes() {
                        ? UpdateTier::Restart
                        : UpdateTier::Live;
         }});
-    // cache: dir/topology need a provider rebuild; rules/ttl/size are live.
     scopes_.push_back(ConfigScope{
         "cache", [](const cfg_t& c) { return ordered_json(c.cache); },
         [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.cache); },
@@ -516,28 +570,32 @@ void App::register_scopes() {
                        ? UpdateTier::Recreate
                        : UpdateTier::Live;
         }});
-    // gameserver: the local/remote routing toggle (read per request -> live).
+    // gameserver: the local/remote routing toggle (read per request -> live) and
+    // the embedded game DB storage path (hot-reloaded/migrated by apply_config,
+    // independent of the cache provider, so it stays a Live tier).
     scopes_.push_back(ConfigScope{
         "gameserver",
-        [](const cfg_t& c) { return ordered_json{{"localGameServer", c.local_game_server}}; },
+        [](const cfg_t& c) {
+            return ordered_json{{"localGameServer", c.local_game_server},
+                                {"gameServerStoragePath", c.game_server_storage_path}};
+        },
         [](cfg_t& c, const ordered_json& j) {
             if (auto it = j.find("localGameServer"); it != j.end())
                 c.local_game_server = it->get<bool>();
+            if (auto it = j.find("gameServerStoragePath"); it != j.end())
+                c.game_server_storage_path = it->get<std::string>();
         },
         [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
-    // gamesettings: the embedded game server's policy knobs (COW -> live).
     scopes_.push_back(ConfigScope{
         "gamesettings", [](const cfg_t& c) { return ordered_json(c.game_server_settings); },
         [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.game_server_settings); },
         [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
-    // mode: switching provider type needs a rebuild.
     scopes_.push_back(ConfigScope{
         "mode", [](const cfg_t& c) { return ordered_json{{"mode", c.mode}}; },
         [](cfg_t& c, const ordered_json& j) {
             if (auto it = j.find("mode"); it != j.end()) c.mode = it->get<std::string>();
         },
         [](const cfg_t&, const cfg_t&) { return UpdateTier::Recreate; }});
-    // package: package cache directory/manifest (live).
     scopes_.push_back(ConfigScope{
         "package", [](const cfg_t& c) { return ordered_json(c.package); },
         [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.package); },
@@ -569,19 +627,39 @@ std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cf
             game_settings_changed = true;
         } else if ((sc.name == "connection" || sc.name == "cache" || sc.name == "package") &&
                    t == UpdateTier::Live) {
-            needs_live = true;  // provider-affecting live change
+            needs_live = true;
         }
     }
-    if (changed.empty()) return changed;  // nothing in scope changed
+    if (changed.empty()) return changed;
 
     // Provider work happens only when a provider-affecting scope changed; a pure
     // gamesettings/gameserver/connection-address change never touches the provider
     // (so its in-flight cache requests are undisturbed).
     std::shared_ptr<host::Provider> provider = snapshot()->provider;
     const bool cache_dir_changed = old_cfg.cache.dir != new_cfg.cache.dir;
+
+    // The embedded game DB directory may move either because the explicit
+    // gameServerStoragePath changed, or because it defaults to <cache.dir>/
+    // gameserver and the cache dir moved. This is independent of the cache
+    // provider, so it is hot-migrated here even when no provider rebuild happens.
+    const std::string old_game_dir = config::game_storage_dir(old_cfg);
+    const std::string new_game_dir = config::game_storage_dir(new_cfg);
+    const bool game_dir_changed = old_game_dir != new_game_dir;
+    // When both old and new leave the path at its default, the game DB lives
+    // inside the cache tree, so the cache-dir migrate physically relocates it for
+    // us — don't move it a second time.
+    const bool game_move_covered_by_cache = old_cfg.game_server_storage_path.empty() &&
+                                            new_cfg.game_server_storage_path.empty() &&
+                                            cache_dir_changed;
+
+    // Quiesce the game DB before any physical move of its data directory.
+    if (game_ && game_dir_changed) game_->detach_db();
+    // Dedicated relocation when the move isn't carried by the cache-tree migrate.
+    // Runs before the cache migrate so a nested default dir isn't moved twice.
+    if (migrate_cache && game_dir_changed && !game_move_covered_by_cache)
+        migrate_dir(old_game_dir, new_game_dir);
+
     if (needs_recreate) {
-        // Quiesce + move the embedded game DB first if its parent cache dir moves.
-        if (migrate_cache && cache_dir_changed && game_) game_->detach_db();
         if (migrate_cache && cache_dir_changed) migrate_dir(old_cfg.cache.dir, new_cfg.cache.dir);
 
         std::shared_ptr<host::Provider> old_provider;
@@ -600,20 +678,20 @@ std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cf
                 state_ = std::make_shared<State>(State{old_cfg, restored});
             } catch (...) {
             }
+            // Re-attach the game DB so it isn't left detached. If we already moved
+            // its data, it now lives at the new path; otherwise it's untouched.
+            if (game_ && game_dir_changed)
+                game_->reopen(migrate_cache ? new_game_dir : old_game_dir);
             throw;
         }
         provider = new_provider;
-        // Reopen the game DB at its (possibly migrated) new location.
-        if (cache_dir_changed && game_) {
-            std::string new_game_dir =
-                (std::filesystem::path(new_cfg.cache.dir.empty() ? "." : new_cfg.cache.dir) /
-                 "gameserver")
-                    .string();
-            game_->reopen(new_game_dir);
-        }
     } else if (needs_live) {
         if (auto* lu = dynamic_cast<host::LiveUpdater*>(provider.get())) lu->live_update(new_cfg);
     }
+
+    // Reopen the game DB at its (possibly migrated) new location. With migrate off
+    // the new directory is a fresh, empty store.
+    if (game_ && game_dir_changed) game_->reopen(new_game_dir);
 
     {
         std::unique_lock lock(state_mu_);
@@ -648,6 +726,45 @@ asio::awaitable<void> App::clear_cache() {
     for (auto& store : sp->all_stores()) {
         co_await net::run_blocking(*ctx_.blocking, [store]() { store->clear(); });
     }
+}
+
+asio::awaitable<int> App::expire_cache(const std::string& store, const std::string& host,
+                                       const std::string& path_prefix, const std::string& version) {
+    auto state = snapshot();
+    auto* sp = dynamic_cast<host::StoreProvider*>(state->provider.get());
+    if (sp == nullptr) co_return 0;
+    auto now = cache::Clock::now();
+    auto match = [host, path_prefix, version](const cache::Metadata& m) {
+        if (!version.empty() && m.version != version) return false;
+        if (!host.empty() || !path_prefix.empty()) {
+            auto u = Url::try_parse(m.url);
+            if (!u) return false;
+            if (!host.empty() && u->host() != host) return false;
+            if (!path_prefix.empty() && u->path().rfind(path_prefix, 0) != 0) return false;
+        }
+        return true;
+    };
+    int total = 0;
+    for (auto& s : sp->all_stores()) {
+        if (!store.empty() && s->name() != store) continue;
+        total += co_await net::run_blocking(*ctx_.blocking,
+                                            [s, &match, now]() { return s->expire(match, now); });
+    }
+    co_return total;
+}
+
+asio::awaitable<std::vector<std::pair<std::string, int>>> App::cache_versions(
+    const std::string& store) {
+    auto state = snapshot();
+    std::map<std::string, int> merged;
+    auto* sp = dynamic_cast<host::StoreProvider*>(state->provider.get());
+    if (sp == nullptr) co_return std::vector<std::pair<std::string, int>>{};
+    for (auto& s : sp->all_stores()) {
+        if (!store.empty() && s->name() != store) continue;
+        auto vs = co_await net::run_blocking(*ctx_.blocking, [s]() { return s->versions(); });
+        for (const auto& [ver, count] : vs) merged[ver] += count;
+    }
+    co_return std::vector<std::pair<std::string, int>>{merged.begin(), merged.end()};
 }
 
 asio::awaitable<void> App::handle_sse(ResponseWriter& w) {

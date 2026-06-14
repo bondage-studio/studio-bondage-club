@@ -7,6 +7,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "cache/backend.hpp"
 
@@ -39,6 +41,8 @@ public:
     void clear() override;
     Stats stats() override;
     void enforce_max_size(std::int64_t max_bytes) override;
+    int expire(const std::function<bool(const Metadata&)>& match, TimePoint when) override;
+    std::vector<std::pair<std::string, int>> versions() override;
 
     // Internal: commit a streamed temp file into the store. Called by the writer.
     Metadata commit_temp(const std::filesystem::path& temp_path, Metadata meta);

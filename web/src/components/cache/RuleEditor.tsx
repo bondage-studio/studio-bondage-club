@@ -147,6 +147,68 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
             />
           </div>
 
+          <div className="border-t pt-3">
+            <p className="text-xs text-muted-foreground mb-1">Version-aware caching (optional)</p>
+            <p className="text-xs text-muted-foreground">
+              Tag entries with a source version so a version bump revalidates via ETag instead of
+              serving stale bytes. A key rewrite collapses different URL shapes onto one entry.
+            </p>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="rule-version">
+              Version{" "}
+              <span className="text-muted-foreground">(query:&lt;name&gt; or re:…)</span>
+            </Label>
+            <Input
+              id="rule-version"
+              value={form.version ?? ""}
+              onChange={(e) => set({ version: e.target.value || undefined })}
+              placeholder="re:/(R\d+)/BondageClub/   or   query:v"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="rule-keypattern">
+              Key pattern <span className="text-muted-foreground">(re:…)</span>
+            </Label>
+            <Input
+              id="rule-keypattern"
+              value={form.keyPattern ?? ""}
+              onChange={(e) => set({ keyPattern: e.target.value || undefined })}
+              placeholder="re:^/(echo-(?:clothing|activity)-ext)/(.*)$"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="rule-keytemplate">
+              Key template <span className="text-muted-foreground">($1-style refs)</span>
+            </Label>
+            <Input
+              id="rule-keytemplate"
+              value={form.keyTemplate ?? ""}
+              onChange={(e) => set({ keyTemplate: e.target.value || undefined })}
+              placeholder="$1/$2"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Revalidate on version change</p>
+              <p className="text-xs text-muted-foreground">
+                On: version-independent key, ETag revalidate across bumps (game body). Off:
+                immutable — version is part of the key (commit SHA / ?v=).
+              </p>
+            </div>
+            <Switch
+              checked={!!form.versionRevalidate}
+              onCheckedChange={(v) => set({ versionRevalidate: v || undefined })}
+            />
+          </div>
+
           <div className="flex items-center justify-between rounded-md border px-3 py-2">
             <div>
               <p className="text-sm font-medium">Force cache</p>

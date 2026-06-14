@@ -18,18 +18,36 @@ namespace sbc::cache {
 // match for the rule to apply; rules are evaluated in order, first match wins.
 // JSON keys mirror the Go struct so existing config.json files stay compatible.
 struct CacheRule {
-    // Conditions
-    std::string host;          // upstream hostname, e.g. "bondage-europe.com"
-    std::string path_prefix;   // real path prefix, e.g. "/Assets/"
-    std::string path_pattern;  // glob (e.g. "*.js") or "re:<regexp>"
+    std::string host;
+    std::string path_prefix;
+    std::string path_pattern;
 
-    // Actions
-    std::string store;                  // named store; "" -> "default"
-    bool bypass = false;                // skip cache entirely
+    std::string store;                  // "" -> "default"
+    bool bypass = false;
     std::optional<int> ttl_seconds;     // override TTL; nullopt -> store default
     std::string key_mode;               // "" | "url" (default) | "path"
-    std::string cache_control;          // override Cache-Control on served responses
+    std::string cache_control;
     bool force_cache = false;           // cache even when upstream says no-store
+
+    // Version-aware caching (all optional). `version` extracts a version label
+    // from the target URL ("query:<name>" or "re:<regexp>"); a mismatch with the
+    // stored entry's version forces an ETag revalidation. `key_pattern` +
+    // `key_template` rewrite the upstream-relative path into a canonical cache
+    // key (e.g. unifying Echo's GitHub-Pages and jsDelivr URL shapes), implying
+    // path-based keying.
+    std::string version;
+    std::string key_pattern;
+    std::string key_template;
+    // version_revalidate selects how the version is used:
+    //   false (default) -> immutable/content-addressed: the version is folded
+    //     into the cache key, so each version is its own permanent entry and a
+    //     new version is a normal miss (no ETag revalidation — pointless for a
+    //     commit SHA / ?v= token whose content always differs).
+    //   true -> the version is the freshness signal for a version-independent
+    //     key (e.g. the game body's R-number): a mismatch forces an ETag
+    //     revalidation so unchanged files 304 and reuse the cached body across
+    //     releases (R129 -> R130).
+    bool version_revalidate = false;
 };
 
 // RouteAction is the resolved policy for a single request URL.
@@ -40,6 +58,10 @@ struct RouteAction {
     std::string key_mode;                    // "path" uses upstream-relative path
     std::string cache_control;               // non-empty overrides response header
     bool force_cache = false;                // bypass ResponseCacheable checks
+    std::string version;
+    std::string key_pattern;
+    std::string key_template;
+    bool version_revalidate = false;         // version = freshness signal vs key part
 };
 
 // glob_match matches a Go path.Match-style glob (*, ?, [set]) where '*' does not

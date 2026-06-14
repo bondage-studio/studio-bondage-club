@@ -35,7 +35,7 @@ hot-reload uses lock-free snapshots in three tiers (live / recreate / restart).
 
 Requires CMake ≥ 3.21, a C++20 compiler, and [vcpkg](https://github.com/microsoft/vcpkg)
 for dependencies (`boost-beast`, `boost-asio`, `boost-url`, `openssl`,
-`leveldb`, `nlohmann-json`).
+`leveldb`, `nlohmann-json`, `spdlog`).
 
 ```sh
 # One-time: bootstrap vcpkg (here vendored under ./.vcpkg)
@@ -57,6 +57,23 @@ cmake -B build -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build build
 ```
+
+### Static vs dynamic linkage
+
+There are two independent knobs: how the **dependencies** are linked (the vcpkg
+triplet) and how the **C/C++ runtime** is linked (`SBC_STATIC_RUNTIME`). Ready
+made presets cover the common cases:
+
+```sh
+cmake --preset static        # self-contained: deps + runtime linked statically
+cmake --preset dynamic       # shared C/C++ runtime
+```
+
+On Windows pick the host-gated variants (`static-windows`, `dynamic-windows`),
+which also select the matching `x64-windows[-static]` triplet.
+
+See **[docs/BUILD.md](docs/BUILD.md)** for the full matrix, per-platform notes
+(incl. the macOS/glibc caveats), and how to verify the resulting binary.
 
 ### Build the web panel
 

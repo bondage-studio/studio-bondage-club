@@ -21,7 +21,7 @@ struct ServerConfig {
     int port = 0;
     std::string admin_base_path;
 
-    std::string address() const;  // host:port
+    std::string address() const;
 };
 
 // StoreConfig defines a named cache store. The name "default" is reserved.
@@ -36,8 +36,8 @@ struct CacheConfig {
     std::string dir;
     int default_ttl_seconds = 0;
     std::int64_t max_size_bytes = 0;
-    std::vector<StoreConfig> stores;          // additional named stores
-    std::vector<cache::CacheRule> rules;      // policy routing; first match wins
+    std::vector<StoreConfig> stores;
+    std::vector<cache::CacheRule> rules;
 };
 
 struct PackageConfig {
@@ -93,7 +93,8 @@ struct Config {
     bool local_game_server = false;  // first-launch default for the frontend's
                                      // local/remote game-server switch (a browser
                                      // localStorage override takes precedence)
-    GameServerConfig game_server_settings;  // embedded game server policy knobs
+    std::string game_server_storage_path;  // empty -> <cache.dir>/gameserver
+    GameServerConfig game_server_settings;
     CacheConfig cache;
     PackageConfig package;
 
@@ -104,6 +105,11 @@ struct Config {
 
 Config default_config();
 Config normalize(Config c);
+
+// game_storage_dir resolves the embedded game server's data directory: the
+// explicit gameServerStoragePath when set, else <cache.dir>/gameserver (the
+// historical default, kept so existing installs keep finding their accounts).
+std::string game_storage_dir(const Config& c);
 
 // Parsing/validation helpers (also used by the reverse-proxy provider).
 // parse_upstream appends a trailing slash to the path, like Go.

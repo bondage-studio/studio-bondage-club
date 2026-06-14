@@ -31,7 +31,9 @@ const char* kSampleConfig = R"JSON({
       { "_comment": "ignored", "host": "claude.mods.bondage.club", "keyMode": "path",
         "forceCache": true, "cacheControl": "public, max-age=31536000, immutable", "store": "mods" },
       { "pathPrefix": "/Assets/", "pathPattern": "re:\\.(js|css|png)$", "keyMode": "path",
-        "forceCache": true, "store": "assets" }
+        "forceCache": true, "store": "assets",
+        "version": "re:/(R\\d+)/BondageClub/", "versionRevalidate": true,
+        "keyPattern": "re:^/(echo-(?:clothing|activity)-ext)/(.*)$", "keyTemplate": "$1/$2" }
     ]
   },
   "package": { "dir": "/tmp/sbc-packages", "manifestUrl": "" }
@@ -63,6 +65,10 @@ SBC_TEST(load_sample_ignores_comment_fields) {
     CHECK(cfg.cache.rules[0].key_mode == "path");
     CHECK(cfg.cache.rules[0].force_cache);
     CHECK(cfg.cache.rules[1].path_prefix == "/Assets/");
+    CHECK(cfg.cache.rules[1].version == "re:/(R\\d+)/BondageClub/");
+    CHECK(cfg.cache.rules[1].key_pattern == "re:^/(echo-(?:clothing|activity)-ext)/(.*)$");
+    CHECK(cfg.cache.rules[1].key_template == "$1/$2");
+    CHECK(cfg.cache.rules[1].version_revalidate);
 }
 
 SBC_TEST(round_trip_preserves_fields) {
@@ -74,11 +80,13 @@ SBC_TEST(round_trip_preserves_fields) {
     CHECK(cfg2.cache.stores.size() == cfg.cache.stores.size());
     CHECK(cfg2.cache.rules.size() == cfg.cache.rules.size());
     CHECK(cfg2.cache.rules[1].path_pattern == "re:\\.(js|css|png)$");
+    CHECK(cfg2.cache.rules[1].version == "re:/(R\\d+)/BondageClub/");
+    CHECK(cfg2.cache.rules[1].key_template == "$1/$2");
+    CHECK(cfg2.cache.rules[1].version_revalidate);
 }
 
 SBC_TEST(parse_strict_rejects_unknown_field) {
-    CHECK_THROWS(config::parse_strict(kSampleConfig));  // contains "_comment"
-    // Without the unknown field it should parse.
+    CHECK_THROWS(config::parse_strict(kSampleConfig));
     std::string clean = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
         "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
         "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
@@ -109,7 +117,7 @@ SBC_TEST(validate_rejects_bad_values) {
     CHECK_THROWS(unknown_store.validate());
 
     auto bad_admin = base;
-    bad_admin.server.admin_base_path = "studio";  // missing slashes
+    bad_admin.server.admin_base_path = "studio";
     CHECK_THROWS(bad_admin.validate());
 }
 
@@ -125,12 +133,12 @@ SBC_TEST(socks5_parsing) {
     CHECK(u->scheme() == "socks5");
     CHECK(u->port() == 1080);
     CHECK_THROWS(config::parse_socks5_proxy("http://127.0.0.1:8080"));
-    CHECK_THROWS(config::parse_socks5_proxy("127.0.0.1"));  // no port
+    CHECK_THROWS(config::parse_socks5_proxy("127.0.0.1"));
 }
 
 SBC_TEST(glob_match_semantics) {
     CHECK(cache::glob_match("*.js", "foo.js"));
-    CHECK(!cache::glob_match("*.js", "/a/foo.js"));  // '*' does not cross '/'
+    CHECK(!cache::glob_match("*.js", "/a/foo.js"));
     CHECK(cache::glob_match("foo?.js", "foo1.js"));
     CHECK(!cache::glob_match("foo?.js", "foo.js"));
     CHECK(cache::glob_match("[abc]at", "bat"));
@@ -144,7 +152,6 @@ SBC_TEST(game_settings_defaults_and_round_trip) {
     CHECK(cfg.game_server_settings.room_limit_max == 20);
     cfg.validate();
 
-    // Edited values survive a to_json/from_json round trip.
     cfg.game_server_settings.message_rate_per_sec = 7;
     cfg.game_server_settings.ping_interval_ms = 12345;
     nlohmann::ordered_json doc = cfg;
@@ -152,22 +159,21 @@ SBC_TEST(game_settings_defaults_and_round_trip) {
     config::from_json(doc, back);
     CHECK(back.game_server_settings.message_rate_per_sec == 7);
     CHECK(back.game_server_settings.ping_interval_ms == 12345);
-    CHECK(back.game_server_settings.room_limit_default == 10);  // untouched default
+    CHECK(back.game_server_settings.room_limit_default == 10);
 }
 
 SBC_TEST(game_settings_validation) {
     config::Config cfg = config::default_config();
     cfg.game_server_settings.room_limit_min = 15;
-    cfg.game_server_settings.room_limit_max = 10;  // min > max
+    cfg.game_server_settings.room_limit_max = 10;
     CHECK_THROWS(cfg.validate());
 
     config::Config cfg2 = config::default_config();
-    cfg2.game_server_settings.message_rate_per_sec = 0;  // must be positive
+    cfg2.game_server_settings.message_rate_per_sec = 0;
     CHECK_THROWS(cfg2.validate());
 }
 
 SBC_TEST(game_settings_strict_parse) {
-    // A known sub-key is accepted; an unknown one is rejected.
     const char* ok = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
         "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
         "gameServerSettings":{"messageRatePerSec":9},
@@ -180,4 +186,30 @@ SBC_TEST(game_settings_strict_parse) {
         "gameServerSettings":{"nope":1},
         "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
     CHECK_THROWS(config::parse_strict(bad));
+}
+
+SBC_TEST(game_storage_dir_defaults_and_override) {
+    config::Config cfg = config::default_config();
+    cfg.cache.dir = "/tmp/sbc-cache";
+
+    cfg.game_server_storage_path.clear();
+    CHECK(config::game_storage_dir(cfg) == "/tmp/sbc-cache/gameserver");
+
+    cfg.game_server_storage_path = "/var/lib/sbc/accounts";
+    CHECK(config::game_storage_dir(cfg) == "/var/lib/sbc/accounts");
+    cfg.cache.dir = "/somewhere/else";
+    CHECK(config::game_storage_dir(cfg) == "/var/lib/sbc/accounts");
+}
+
+SBC_TEST(game_storage_path_round_trip) {
+    const char* text = R"({"server":{"host":"127.0.0.1","port":9000,"adminBasePath":"/studio/"},
+        "mode":"reverse_proxy_cache","upstream":"https://x.example/","gameServer":"https://y.example/",
+        "gameServerStoragePath":"  /data/accounts  ",
+        "cache":{"dir":"/tmp/c","defaultTTLSeconds":0,"maxSizeBytes":1}})";
+    auto cfg = load_lenient(text);
+    CHECK(cfg.game_server_storage_path == "/data/accounts");
+
+    nlohmann::ordered_json doc = cfg;
+    auto back = load_lenient(doc.dump());
+    CHECK(back.game_server_storage_path == "/data/accounts");
 }

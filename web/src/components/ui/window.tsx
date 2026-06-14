@@ -101,7 +101,6 @@ export function Window({
   const [popped, setPopped] = useState(false);
   const [styleText, setStyleText] = useState("");
 
-  // ----- resolve slots from children -----
   let titleEl: ReactElement<TitleProps> | undefined;
   let actionsEl: ReactElement<SlotProps> | undefined;
   let bodyEl: ReactElement<SlotProps> | undefined;
@@ -119,7 +118,6 @@ export function Window({
   const docTitle =
     documentTitle ?? (typeof titleNode === "string" ? titleNode : "Configuration");
 
-  // ----- drag (title bar) -----
   function onDragMove(e: PointerEvent) {
     const o = dragOffset.current;
     if (!o) return;
@@ -142,7 +140,6 @@ export function Window({
     window.addEventListener("pointerup", onDragUp);
   }
 
-  // ----- resize (bottom-right handle) -----
   function onResizeMove(e: PointerEvent) {
     const s = resizeStart.current;
     if (!s) return;
@@ -166,7 +163,6 @@ export function Window({
     window.addEventListener("pointerup", onResizeUp);
   }
 
-  // ----- pop out -----
   function popOut() {
     const root = ref.current?.getRootNode();
     if (root instanceof ShadowRoot) {

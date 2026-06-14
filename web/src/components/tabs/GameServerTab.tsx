@@ -1,16 +1,21 @@
 import { Badge } from "../ui/badge";
+import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
+import { FormField } from "../shared/FormField";
 import { Panel } from "../shared/Panel";
 import type { GameServerMode } from "../../originalPage";
-import type { GameServerStatus } from "../../types";
+import type { AppConfig, GameServerStatus } from "../../types";
 
 interface Props {
+  form: AppConfig;
   serverMode: GameServerMode;
   gameStatus: GameServerStatus | null;
   onSwitchMode: (mode: GameServerMode) => void;
+  onChange: (mutator: (draft: AppConfig) => void) => void;
 }
 
-export function GameServerTab({ serverMode, gameStatus, onSwitchMode }: Props) {
+export function GameServerTab({ form, serverMode, gameStatus, onSwitchMode, onChange }: Props) {
+  const defaultDir = `${form.cache.dir || "."}/gameserver`;
   return (
     <div className="grid max-w-2xl gap-3">
       <Panel title="Embedded server">
@@ -28,6 +33,21 @@ export function GameServerTab({ serverMode, gameStatus, onSwitchMode }: Props) {
             onCheckedChange={(checked) => onSwitchMode(checked ? "local" : "remote")}
           />
         </div>
+      </Panel>
+      <Panel title="Storage">
+        <FormField label="Account storage path">
+          <Input
+            value={form.gameServerStoragePath}
+            placeholder={defaultDir}
+            spellCheck={false}
+            onChange={(e) => onChange((d) => void (d.gameServerStoragePath = e.target.value))}
+          />
+        </FormField>
+        <p className="mt-2.5 text-xs text-muted-foreground">
+          Where the embedded server keeps its account database. Leave empty to use the default{" "}
+          <code>{defaultDir}</code>. Saving a new location applies live — you'll be asked whether to
+          migrate the existing accounts or start fresh; live game sockets reconnect either way.
+        </p>
       </Panel>
       <Panel
         title="Live status"
@@ -52,8 +72,8 @@ export function GameServerTab({ serverMode, gameStatus, onSwitchMode }: Props) {
           </div>
         </div>
         <p className="mt-2.5 text-xs text-muted-foreground">
-          Accounts persist under <code>&lt;cache dir&gt;/gameserver</code>. Your choice is
-          remembered in this browser; the server's default applies only on first launch.
+          Accounts persist under <code>{form.gameServerStoragePath || defaultDir}</code>. Your
+          choice is remembered in this browser; the server's default applies only on first launch.
         </p>
       </Panel>
     </div>

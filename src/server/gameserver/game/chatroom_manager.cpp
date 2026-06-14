@@ -159,8 +159,6 @@ std::shared_ptr<OnlineAccount> ChatRoomManager::account_for(const std::string& s
     return it == gs_.by_socket.end() ? nullptr : it->second;
 }
 
-// ---- character / room data builders -------------------------------------------------
-
 nlohmann::json ChatRoomManager::char_shared_data(const OnlineAccount& acc, const ChatRoom& room) {
     json c = json::object();
     for (const char* k :
@@ -268,8 +266,6 @@ void ChatRoomManager::chat_room_message(ChatRoom& room, std::int64_t sender,
     }
 }
 
-// ---- room membership ----------------------------------------------------------------
-
 void ChatRoomManager::room_remove_locked(const std::shared_ptr<OnlineAccount>& acc,
                                           const std::string& reason, json dictionary) {
     if (!acc->chat_room) return;
@@ -307,8 +303,6 @@ void ChatRoomManager::remove_from_room(std::shared_ptr<OnlineAccount> acc) {
     std::lock_guard<std::mutex> lock(gs_.mu);
     room_remove_locked(acc, "ServerDisconnect", json::array());
 }
-
-// ---- handlers ------------------------------------------------------------------------
 
 void ChatRoomManager::chat_room_search(std::shared_ptr<socketio::Socket> socket, json data) {
     if (!data.is_object() || !data.contains("Query") || !data["Query"].is_string() ||
@@ -371,7 +365,7 @@ void ChatRoomManager::chat_room_search(std::shared_ptr<socketio::Socket> socket,
         }
         r["MemberCount"] = static_cast<std::int64_t>(room.accounts.size());
         r["MemberLimit"] = room.limit();
-        r["Friends"] = json::array();  // friend annotations are a Phase 8 refinement
+        r["Friends"] = json::array();
         r["CanJoin"] = account_has_any_role(*acc, room, room.data.value("Access", json::array()));
         result.push_back(r);
         if (static_cast<int>(result.size()) >= settings_.snapshot()->search_max_results) break;

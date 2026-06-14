@@ -60,8 +60,7 @@ public:
     boost::asio::any_io_executor executor() const { return ex_; }
 
     // handle_request is the single HTTP entry point for "/socket.io/*". It routes
-    // the Engine.IO handshake (GET, no sid), long-poll GET, long-poll POST, and
-    // (Phase 3) the WebSocket upgrade.
+    // the Engine.IO handshake, long-poll traffic, and WebSocket upgrades.
     boost::asio::awaitable<void> handle_request(Request& req, ResponseWriter& w);
 
     // find returns the connection for a session id, or nullptr.

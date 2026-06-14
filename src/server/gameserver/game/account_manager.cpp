@@ -102,7 +102,7 @@ AccountManager::AccountManager(asio::any_io_executor ex, net::BlockingPool& bloc
       settings_(settings),
       server_info_timer_(ex_),
       delayed_timer_(ex_) {
-    (void)mailer_;  // used by PasswordReset (Phase 8)
+    (void)mailer_;
 }
 
 void AccountManager::start() {
@@ -1308,7 +1308,6 @@ void AccountManager::remove_account(const std::string& socket_id) {
         gs_.by_member.erase(acc->member_number());
     }
     spdlog::info("gameserver: account removed {} id={}", acc->account_name(), socket_id);
-    // Flush any delayed updates for this account.
     std::string upper = acc->account_name();
     json persist;
     if (acc->delayed_appearance) persist["Appearance"] = *acc->delayed_appearance;
@@ -1323,7 +1322,6 @@ void AccountManager::remove_account(const std::string& socket_id) {
             },
             asio::detached);
     }
-    // Phase 6: ChatRoomRemove is invoked here.
 }
 
 void AccountManager::send_server_info(const std::shared_ptr<socketio::Socket>& socket) {

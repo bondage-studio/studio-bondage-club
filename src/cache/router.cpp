@@ -125,6 +125,24 @@ std::shared_ptr<const std::vector<PolicyRouter::CompiledRule>> PolicyRouter::com
                 cr.path_glob = pat;
             }
         }
+        // Validate the version / key-rewrite regexps up front so bad config is
+        // rejected at load time (extraction itself happens in cache/version.cpp).
+        const std::string& ver = rules[i].version;
+        if (ver.rfind("re:", 0) == 0) {
+            try {
+                std::regex(ver.substr(3), std::regex::ECMAScript);
+            } catch (const std::regex_error& e) {
+                throw Error("rule[" + std::to_string(i) + "] version regexp: " + e.what());
+            }
+        }
+        const std::string& kp = rules[i].key_pattern;
+        if (!kp.empty()) {
+            try {
+                std::regex(kp.rfind("re:", 0) == 0 ? kp.substr(3) : kp, std::regex::ECMAScript);
+            } catch (const std::regex_error& e) {
+                throw Error("rule[" + std::to_string(i) + "] keyPattern regexp: " + e.what());
+            }
+        }
         out->push_back(std::move(cr));
     }
     return out;
@@ -180,6 +198,10 @@ RouteAction PolicyRouter::match(const Url& target, const Url& base) const {
         action.key_mode = r.key_mode;
         action.cache_control = r.cache_control;
         action.force_cache = r.force_cache;
+        action.version = r.version;
+        action.key_pattern = r.key_pattern;
+        action.key_template = r.key_template;
+        action.version_revalidate = r.version_revalidate;
         if (r.ttl_seconds.has_value()) {
             action.ttl = std::chrono::seconds(*r.ttl_seconds);
         }

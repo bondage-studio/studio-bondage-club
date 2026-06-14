@@ -1,18 +1,47 @@
 cmake_minimum_required(VERSION 3.21)
+
+# CMP0091: select the MSVC runtime via CMAKE_MSVC_RUNTIME_LIBRARY (abstract,
+# generator-expression friendly) instead of munging CMAKE_CXX_FLAGS. Must be set
+# before project(). Default is NEW at 3.21, but make the intent explicit so the
+# SBC_STATIC_RUNTIME option below works regardless of policy defaults.
+cmake_policy(SET CMP0091 NEW)
+
 project(studio-bondage-club CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Export compile_commands.json for clangd / IDE tooling.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
-option(SBC_EMBED_WEB "Embed web/dist into the binary instead of reading from disk" OFF)
-option(SBC_BUILD_TESTS "Build unit tests" ON)
+# Options
+option(SBC_EMBED_WEB     "Embed web/dist into the binary instead of reading from disk" OFF)
+option(SBC_BUILD_TESTS   "Build unit tests" ON)
 
-# ---- Dependencies (provided by vcpkg toolchain) ----
+# Runtime (C/C++ standard library) linkage. This is independent of how the vcpkg
+# dependencies are linked — that is governed by the vcpkg triplet (see docs/BUILD.md).
+#   ON  → static runtime: libstdc++/libgcc (GCC) or the static MSVC CRT are baked
+#         into the binary, giving a self-contained executable.
+#   OFF → dynamic runtime: the binary links the shared system C/C++ runtime.
+# Note: macOS has no static libSystem, so this is a no-op on Apple platforms.
+option(SBC_STATIC_RUNTIME "Statically link the C/C++ runtime (libstdc++/libgcc, MSVC CRT)" OFF)
+
+if(SBC_STATIC_RUNTIME AND MSVC)
+  # MultiThreaded[Debug]  → /MT[d]  (static CRT)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+elseif(MSVC)
+  # MultiThreaded[Debug]DLL → /MD[d] (dynamic CRT, the MSVC default)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
+# Dependencies (provided by vcpkg toolchain)
 find_package(Boost REQUIRED COMPONENTS system url)
 find_package(OpenSSL REQUIRED)
 find_package(leveldb CONFIG REQUIRED)
@@ -20,7 +49,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
-# ---- Core library (everything except main.cpp, so tests can link it) ----
+# Core library (everything except main.cpp, so tests can link it)
 file(GLOB_RECURSE SBC_CORE_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 list(REMOVE_ITEM SBC_CORE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
@@ -57,49 +86,71 @@ if(WIN32)
   target_compile_definitions(sbc_core PUBLIC _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
 
-# ---- Optional: embed web assets ----
+# Optional: embed web assets
 if(SBC_EMBED_WEB)
   include(cmake/EmbedWebAssets.cmake)
   embed_web_assets(sbc_core "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")
   target_compile_definitions(sbc_core PUBLIC SBC_EMBED_WEB=1)
 endif()
 
-# ---- Executable ----
+# Executable
 add_executable(studio-bondage-club "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 target_link_libraries(studio-bondage-club PRIVATE sbc_core)
 
-# ---- Release size optimisations ----
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-  # Hide symbols not explicitly exported — enables finer-grained dead stripping.
-  target_compile_options(sbc_core PRIVATE -fvisibility=hidden)
-
-  if(UNIX)
-    target_compile_options(sbc_core PRIVATE -ffunction-sections -fdata-sections)
+# Runtime linkage (C/C++ standard library)
+# MSVC is handled via CMAKE_MSVC_RUNTIME_LIBRARY above. For GCC / non-Apple Clang
+# we bundle the C++ runtime into the executable. macOS ships no static libSystem,
+# so a static runtime is not supported there and the flags are skipped.
+function(sbc_apply_static_runtime target)
+  if(SBC_STATIC_RUNTIME AND NOT MSVC AND NOT APPLE)
+    target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++)
   endif()
+endfunction()
+sbc_apply_static_runtime(studio-bondage-club)
 
-  if(APPLE)
-    # -dead_strip: remove unreferenced sections after LTO; -S: strip debug info.
-    target_link_options(studio-bondage-club PRIVATE -Wl,-dead_strip -Wl,-S)
-  elseif(UNIX)
-    target_link_options(studio-bondage-club PRIVATE -Wl,--gc-sections -Wl,-s)
-  endif()
+# Release size / speed optimisations
+# Generator expressions keep these correct for both single- and multi-config
+# generators (Ninja, Makefiles, Visual Studio, Ninja Multi-Config), where
+# CMAKE_BUILD_TYPE is empty and the config is only known at build time.
+set(_sbc_release_cfg "$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>,$<CONFIG:RelWithDebInfo>>")
 
-  # Link-time optimisation (inter-procedural). Enable with:
-  #   cmake … -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
-  # or set it unconditionally here if build time is not a concern.
-  if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
-    set_target_properties(sbc_core studio-bondage-club
-      PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-  endif()
+if(NOT MSVC)
+  # Hide symbols not explicitly exported and split functions/data into their own
+  # sections so the linker can dead-strip everything unreferenced.
+  target_compile_options(sbc_core PRIVATE
+    $<${_sbc_release_cfg}:-fvisibility=hidden -ffunction-sections -fdata-sections>)
 endif()
 
-# ---- Tests ----
+if(APPLE)
+  # -dead_strip: drop unreferenced sections; -S: strip debug symbols.
+  target_link_options(studio-bondage-club PRIVATE
+    $<${_sbc_release_cfg}:-Wl,-dead_strip>
+    $<$<CONFIG:Release,MinSizeRel>:-Wl,-S>)
+elseif(MSVC)
+  # /OPT:REF eliminates unreferenced code/data; /OPT:ICF folds identical COMDATs.
+  target_link_options(studio-bondage-club PRIVATE
+    $<${_sbc_release_cfg}:/OPT:REF /OPT:ICF>)
+elseif(UNIX)
+  target_link_options(studio-bondage-club PRIVATE
+    $<${_sbc_release_cfg}:-Wl,--gc-sections>
+    $<$<CONFIG:Release,MinSizeRel>:-Wl,-s>)
+endif()
+
+# Link-time optimisation (inter-procedural). Opt in with:
+#   cmake … -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+  set_target_properties(sbc_core studio-bondage-club
+    PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
+# Tests
 if(SBC_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
   enable_testing()
   file(GLOB SBC_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
   if(SBC_TEST_SOURCES)
     add_executable(sbc_tests ${SBC_TEST_SOURCES})
     target_link_libraries(sbc_tests PRIVATE sbc_core)
+    sbc_apply_static_runtime(sbc_tests)
     add_test(NAME sbc_tests COMMAND sbc_tests)
   endif()
 endif()

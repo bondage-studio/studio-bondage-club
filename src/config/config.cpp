@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cctype>
+#include <filesystem>
 #include <set>
 
 #include "cache/json.hpp"
@@ -50,6 +51,12 @@ Config default_config() {
     c.cache.max_size_bytes = 5LL * 1024 * 1024 * 1024;
     c.package.dir = (base_config / "packages").string();
     return c;
+}
+
+std::string game_storage_dir(const Config& c) {
+    if (!c.game_server_storage_path.empty()) return c.game_server_storage_path;
+    std::string base = c.cache.dir.empty() ? "." : c.cache.dir;
+    return (std::filesystem::path(base) / "gameserver").string();
 }
 
 Url parse_upstream(const std::string& raw) {
@@ -146,7 +153,7 @@ void Config::validate() const {
         }
     }
     try {
-        cache::PolicyRouter router(cache.rules);  // validates patterns compile
+        cache::PolicyRouter router(cache.rules);
     } catch (const Error& e) {
         throw ValidationError(std::string("cache rules: ") + e.what());
     }
@@ -187,6 +194,7 @@ Config normalize(Config c) {
     c.upstream = trim(c.upstream);
     c.game_server = trim(c.game_server);
     c.socks5_proxy = trim(c.socks5_proxy);
+    c.game_server_storage_path = trim(c.game_server_storage_path);
     if (c.game_server.empty()) c.game_server = default_config().game_server;
     if (c.server.host.empty()) c.server.host = "127.0.0.1";
     if (c.server.port == 0) c.server.port = 8080;
@@ -198,7 +206,7 @@ Config normalize(Config c) {
     return c;
 }
 
-// ---- JSON (de)serialization (camelCase keys, omitempty to match Go) ----
+// JSON (de)serialization uses camelCase keys and omits empty values to match Go.
 
 void to_json(ordered_json& j, const ServerConfig& s) {
     j = ordered_json::object();
@@ -325,6 +333,7 @@ void to_json(ordered_json& j, const Config& c) {
     j["gameServer"] = c.game_server;
     j["socks5Proxy"] = c.socks5_proxy;
     j["localGameServer"] = c.local_game_server;
+    j["gameServerStoragePath"] = c.game_server_storage_path;
     j["gameServerSettings"] = c.game_server_settings;
     j["cache"] = c.cache;
     j["package"] = c.package;
@@ -339,6 +348,8 @@ void from_json(const ordered_json& j, Config& c) {
     if (auto it = j.find("gameServer"); it != j.end()) c.game_server = it->get<std::string>();
     if (auto it = j.find("socks5Proxy"); it != j.end()) c.socks5_proxy = it->get<std::string>();
     if (auto it = j.find("localGameServer"); it != j.end()) c.local_game_server = it->get<bool>();
+    if (auto it = j.find("gameServerStoragePath"); it != j.end())
+        c.game_server_storage_path = it->get<std::string>();
     if (auto it = j.find("gameServerSettings"); it != j.end()) from_json(*it, c.game_server_settings);
     if (auto it = j.find("cache"); it != j.end()) from_json(*it, c.cache);
     if (auto it = j.find("package"); it != j.end()) from_json(*it, c.package);
