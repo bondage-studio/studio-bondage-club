@@ -2,6 +2,7 @@ import { ExternalLink, X } from "lucide-react";
 import { Children, isValidElement, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { IS_ANDROID_BUILD } from "../../lib/platform";
 import { WindowPortal } from "./window-portal";
 
 type Slot = "title" | "actions" | "body" | "footer";
@@ -91,8 +92,10 @@ export function Window({
   defaultHeight = 580,
   minWidth = 460,
   minHeight = 360,
-  className
+  className,
 }: WindowProps) {
+  const canPop = poppable && !IS_ANDROID_BUILD;
+
   const ref = useRef<HTMLDivElement>(null);
   const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -115,15 +118,14 @@ export function Window({
   });
 
   const titleNode = titleEl?.props.children;
-  const docTitle =
-    documentTitle ?? (typeof titleNode === "string" ? titleNode : "Configuration");
+  const docTitle = documentTitle ?? (typeof titleNode === "string" ? titleNode : "Configuration");
 
   function onDragMove(e: PointerEvent) {
     const o = dragOffset.current;
     if (!o) return;
     setPos({
       x: clamp(e.clientX - o.dx, 0, window.innerWidth - 120),
-      y: clamp(e.clientY - o.dy, 0, window.innerHeight - 40)
+      y: clamp(e.clientY - o.dy, 0, window.innerHeight - 40),
     });
   }
   function onDragUp() {
@@ -145,7 +147,7 @@ export function Window({
     if (!s) return;
     setSize({
       w: clamp(s.w + (e.clientX - s.x), minWidth, window.innerWidth),
-      h: clamp(s.h + (e.clientY - s.y), minHeight, window.innerHeight)
+      h: clamp(s.h + (e.clientY - s.y), minHeight, window.innerHeight),
     });
   }
   function onResizeUp() {
@@ -181,7 +183,7 @@ export function Window({
       <header
         className={cn(
           "flex h-8 shrink-0 select-none items-center justify-between border-b bg-muted pl-3 pr-1",
-          !popped && "cursor-move touch-none"
+          !popped && "cursor-move touch-none",
         )}
         onPointerDown={popped ? undefined : onTitlePointerDown}
       >
@@ -191,7 +193,7 @@ export function Window({
         </div>
         <div className="flex shrink-0 items-center" onPointerDown={(e) => e.stopPropagation()}>
           {actionsEl?.props.children}
-          {poppable && !popped && (
+          {canPop && !popped && (
             <button className={titleBtn} onClick={popOut} title="Open in separate window">
               <ExternalLink size={14} />
             </button>
@@ -246,7 +248,7 @@ export function Window({
         // The shadow host owns the page-level z-index; within it, later-mounted
         // windows (editors) stack above earlier ones by DOM order.
         "fixed z-40 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl",
-        className
+        className,
       )}
       style={style}
     >
@@ -257,7 +259,7 @@ export function Window({
         className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize touch-none"
         style={{
           background:
-            "linear-gradient(135deg, transparent 0 50%, hsl(var(--muted-foreground) / 0.45) 50% 60%, transparent 60% 70%, hsl(var(--muted-foreground) / 0.45) 70% 80%, transparent 80%)"
+            "linear-gradient(135deg, transparent 0 50%, hsl(var(--muted-foreground) / 0.45) 50% 60%, transparent 60% 70%, hsl(var(--muted-foreground) / 0.45) 70% 80%, transparent 80%)",
         }}
       />
     </div>

@@ -13,7 +13,12 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={cn("overflow-hidden rounded-md border bg-card", className)}>
+    <section
+      className={cn(
+        "overflow-hidden rounded-md border bg-card @max-xl:shadow-md",
+        className
+      )}
+    >
       {title && (
         <div className="flex h-7 items-center justify-between gap-2 border-b bg-muted px-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

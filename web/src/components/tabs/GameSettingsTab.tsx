@@ -10,23 +10,23 @@ interface Props {
 export function GameSettingsTab({ form, onChange }: Props) {
   const cfg = form.gameServerSettings;
   return (
-    <div className="grid max-w-2xl gap-3">
+    <div className="@container grid max-w-2xl gap-3">
       <Panel title="Protocol (Engine.IO)">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="Ping interval (ms)" cfg={cfg} k="pingIntervalMs" set={onChange} />
           <GsNumber label="Ping timeout (ms)" cfg={cfg} k="pingTimeoutMs" set={onChange} />
           <GsNumber label="Max payload (bytes)" cfg={cfg} k="maxPayloadBytes" set={onChange} />
         </div>
       </Panel>
       <Panel title="Rate limits">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="Messages / sec" cfg={cfg} k="messageRatePerSec" set={onChange} />
           <GsNumber label="Conns / IP" cfg={cfg} k="ipConnectionLimit" set={onChange} />
           <GsNumber label="New conns / sec / IP" cfg={cfg} k="ipConnectionRatePerSec" set={onChange} />
         </div>
       </Panel>
       <Panel title="Accounts">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="Create / day / IP" cfg={cfg} k="accountCreatePerDay" set={onChange} />
           <GsNumber label="Create / hour / IP" cfg={cfg} k="accountCreatePerHour" set={onChange} />
           <GsNumber label="Login pace (ms)" cfg={cfg} k="loginPaceMs" set={onChange} />
@@ -37,7 +37,7 @@ export function GameSettingsTab({ form, onChange }: Props) {
         </div>
       </Panel>
       <Panel title="Rooms & text limits">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="Search results cap" cfg={cfg} k="searchMaxResults" set={onChange} />
           <GsNumber label="Room default size" cfg={cfg} k="roomLimitDefault" set={onChange} />
           <GsNumber label="Room min size" cfg={cfg} k="roomLimitMin" set={onChange} />
@@ -49,7 +49,7 @@ export function GameSettingsTab({ form, onChange }: Props) {
         </div>
       </Panel>
       <Panel title="Timers">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="ServerInfo interval (s)" cfg={cfg} k="serverInfoIntervalSec" set={onChange} />
           <GsNumber label="Delayed flush (s)" cfg={cfg} k="delayedFlushIntervalSec" set={onChange} />
         </div>

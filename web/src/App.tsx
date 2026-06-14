@@ -7,7 +7,7 @@ import {
   Settings,
   SlidersHorizontal,
   Smartphone,
-  Wifi
+  Wifi,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -25,11 +25,12 @@ import { ModeTab } from "./components/tabs/ModeTab";
 import { PackageTab } from "./components/tabs/PackageTab";
 import { Button } from "./components/ui/button";
 import { useConfirm } from "./components/ui/confirm";
+import { MasterDetail } from "./components/ui/master-detail";
 import { ScrollArea } from "./components/ui/scroll-area";
 import { Window } from "./components/ui/window";
 import { copyScope, scopeSlice, tierMessages } from "./config/scope";
 import { useSSE } from "./hooks/useSSE";
-import { cn, errorMessage } from "./lib/utils";
+import { errorMessage } from "./lib/utils";
 import { IS_ANDROID_BUILD } from "./lib/platform";
 import { getGameServerMode, setGameServerMode, type GameServerMode } from "./originalPage";
 import type {
@@ -38,7 +39,7 @@ import type {
   ConfigResponse,
   ConfigScopeName,
   GameServerStatus,
-  StoreConfig
+  StoreConfig,
 } from "./types";
 
 type PanelTab = ConfigScopeName | "android";
@@ -59,51 +60,49 @@ const allPages: PageDef[] = [
     id: "connection",
     icon: <Wifi size={16} />,
     label: "Connection",
-    description: "Upstream server, proxy and local listener address."
+    description: "Upstream server, proxy and local listener address.",
   },
   {
     id: "cache",
     icon: <HardDrive size={16} />,
     label: "Cache",
-    description: "Storage location, named stores and policy rules."
+    description: "Storage location, named stores and policy rules.",
   },
   {
     id: "gameserver",
     icon: <Gamepad2 size={16} />,
     label: "Game Server",
-    description: "Run the Bondage Club game server locally for offline play."
+    description: "Run the Bondage Club game server locally for offline play.",
   },
   {
     id: "gamesettings",
     icon: <SlidersHorizontal size={16} />,
     label: "Game Settings",
-    description: "Tune the embedded game server's limits, intervals and timeouts."
+    description: "Tune the embedded game server's limits, intervals and timeouts.",
   },
   {
     id: "mode",
     icon: <Server size={16} />,
     label: "Mode",
-    description: "Operating mode and runtime capabilities."
+    description: "Operating mode and runtime capabilities.",
   },
   {
     id: "package",
     icon: <Package size={16} />,
     label: "Package",
-    description: "Package cache directory and manifest source."
+    description: "Package cache directory and manifest source.",
   },
   {
     id: "android",
     icon: <Smartphone size={16} />,
     label: "Android",
     description: "Settings specific to the Android app.",
-    androidOnly: true
-  }
+    androidOnly: true,
+  },
 ];
 
 // Desktop build drops androidOnly tabs; Android build drops androidHidden tabs.
-const pages = allPages.filter((p) =>
-  IS_ANDROID_BUILD ? !p.androidHidden : !p.androidOnly
-);
+const pages = allPages.filter((p) => (IS_ANDROID_BUILD ? !p.androidHidden : !p.androidOnly));
 
 function App() {
   const [snapshot, setSnapshot] = useState<ConfigResponse | null>(null);
@@ -168,8 +167,7 @@ function App() {
   function sectionDirty(scope: PanelTab): boolean {
     if (scope === "android" || !snapshot || !form) return false;
     return (
-      JSON.stringify(scopeSlice(form, scope)) !==
-      JSON.stringify(scopeSlice(snapshot.config, scope))
+      JSON.stringify(scopeSlice(form, scope)) !== JSON.stringify(scopeSlice(snapshot.config, scope))
     );
   }
 
@@ -216,7 +214,7 @@ function App() {
       const resp = await saveConfigScope(
         scope,
         scopeSlice(form, scope),
-        migrate ? { migrate: true } : undefined
+        migrate ? { migrate: true } : undefined,
       );
       const fresh = await loadConfig();
       setSnapshot(fresh);
@@ -273,7 +271,7 @@ function App() {
       title: "Reset to defaults?",
       body: "This overwrites your current configuration with the built-in defaults and reloads the app.",
       confirmLabel: "Reset & restart",
-      destructive: true
+      destructive: true,
     });
     if (!ok) return;
     setBusy(true);
@@ -412,119 +410,95 @@ function App() {
           Studio Bondage Club — Configuration
         </Window.Title>
         <Window.Footer>{footer}</Window.Footer>
-        <Window.Body className="flex-row">
-          <nav className="flex w-40 shrink-0 flex-col gap-px border-r bg-muted p-1.5">
-            {pages.map(({ id, icon, label }) => {
-              const active = tab === id;
-              const showDot = sectionDirty(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  className={cn(
-                    "relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
-                    active
-                      ? "bg-primary/10 font-medium text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  {active && (
-                    <span className="absolute inset-y-1 left-0 w-0.5 rounded-r-full bg-primary" />
-                  )}
-                  <span
-                    className={cn(
-                      "shrink-0",
-                      active ? "text-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    {icon}
-                  </span>
-                  {label}
-                  {showDot && (
-                    <span
-                      className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                      title="Unsaved changes"
+        <Window.Body>
+          <MasterDetail
+            items={pages.map(({ id, icon, label, description }) => ({
+              key: id,
+              icon,
+              label,
+              description,
+              badge: sectionDirty(id),
+            }))}
+            activeKey={tab}
+            onSelect={(key) => setTab(key as PanelTab)}
+            backLabel={activePage.label}
+            detail={
+              <>
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background px-4 py-2">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold leading-tight">{activePage.label}</h2>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {activePage.description}
+                    </p>
+                  </div>
+                  {tab !== "android" && (
+                    <SectionBar
+                      dirty={sectionDirty(tab)}
+                      busy={busy}
+                      onRefresh={() => void refreshScope(tab)}
+                      onSave={
+                        tab === "cache"
+                          ? handleSaveCache
+                          : tab === "gameserver"
+                            ? handleSaveGameServer
+                            : () => void saveScope(tab)
+                      }
                     />
                   )}
-                </button>
-              );
-            })}
-          </nav>
+                </div>
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background px-4 py-2">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold leading-tight">{activePage.label}</h2>
-                <p className="truncate text-xs text-muted-foreground">
-                  {activePage.description}
-                </p>
-              </div>
-              {tab !== "android" && (
-                <SectionBar
-                  dirty={sectionDirty(tab)}
-                  busy={busy}
-                  onRefresh={() => void refreshScope(tab)}
-                  onSave={
-                    tab === "cache"
-                      ? handleSaveCache
-                      : tab === "gameserver"
-                        ? handleSaveGameServer
-                        : () => void saveScope(tab)
-                  }
-                />
-              )}
-            </div>
-
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="p-3">
-                {!form || !snapshot ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-                ) : (
-                  <>
-                    {tab === "connection" && (
-                      <ConnectionTab form={form} onChange={updateConfig} />
+                <ScrollArea className="min-h-0 flex-1">
+                  <div className="@container p-3">
+                    {!form || !snapshot ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+                    ) : (
+                      <>
+                        {tab === "connection" && (
+                          <ConnectionTab form={form} onChange={updateConfig} />
+                        )}
+                        {tab === "cache" && (
+                          <CacheTab
+                            form={form}
+                            connected={connected}
+                            sseStats={sseStats}
+                            busy={busy}
+                            onChange={updateConfig}
+                            onClearCache={() => void handleClearCache()}
+                            onAddStore={openAddStore}
+                            onEditStore={openEditStore}
+                            onDeleteStore={handleDeleteStore}
+                            onAddRule={openAddRule}
+                            onEditRule={openEditRule}
+                            onDeleteRule={handleDeleteRule}
+                            onMoveRule={handleMoveRule}
+                          />
+                        )}
+                        {tab === "gameserver" && (
+                          <GameServerTab
+                            form={form}
+                            serverMode={serverMode}
+                            gameStatus={gameStatus}
+                            onSwitchMode={switchServerMode}
+                            onChange={updateConfig}
+                          />
+                        )}
+                        {tab === "gamesettings" && (
+                          <GameSettingsTab form={form} onChange={updateConfig} />
+                        )}
+                        {tab === "mode" && (
+                          <ModeTab form={form} snapshot={snapshot} onChange={updateConfig} />
+                        )}
+                        {tab === "package" && (
+                          <PackageTab form={form} snapshot={snapshot} onChange={updateConfig} />
+                        )}
+                        {IS_ANDROID_BUILD && tab === "android" && <AndroidTab />}
+                      </>
                     )}
-                    {tab === "cache" && (
-                      <CacheTab
-                        form={form}
-                        connected={connected}
-                        sseStats={sseStats}
-                        busy={busy}
-                        onChange={updateConfig}
-                        onClearCache={() => void handleClearCache()}
-                        onAddStore={openAddStore}
-                        onEditStore={openEditStore}
-                        onDeleteStore={handleDeleteStore}
-                        onAddRule={openAddRule}
-                        onEditRule={openEditRule}
-                        onDeleteRule={handleDeleteRule}
-                        onMoveRule={handleMoveRule}
-                      />
-                    )}
-                    {tab === "gameserver" && (
-                      <GameServerTab
-                        form={form}
-                        serverMode={serverMode}
-                        gameStatus={gameStatus}
-                        onSwitchMode={switchServerMode}
-                        onChange={updateConfig}
-                      />
-                    )}
-                    {tab === "gamesettings" && (
-                      <GameSettingsTab form={form} onChange={updateConfig} />
-                    )}
-                    {tab === "mode" && (
-                      <ModeTab form={form} snapshot={snapshot} onChange={updateConfig} />
-                    )}
-                    {tab === "package" && (
-                      <PackageTab form={form} snapshot={snapshot} onChange={updateConfig} />
-                    )}
-                    {IS_ANDROID_BUILD && tab === "android" && <AndroidTab />}
-                  </>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
+                  </div>
+                </ScrollArea>
+              </>
+            }
+          />
         </Window.Body>
       </Window>
 
@@ -563,12 +537,15 @@ function App() {
         <CacheMigrateDialog
           title="Move game accounts?"
           intro="The game server storage path is changing:"
-          oldDir={snapshot.config.gameServerStoragePath || `${snapshot.config.cache.dir || "."}/gameserver`}
+          oldDir={
+            snapshot.config.gameServerStoragePath ||
+            `${snapshot.config.cache.dir || "."}/gameserver`
+          }
           newDir={form.gameServerStoragePath || `${form.cache.dir || "."}/gameserver`}
           body={
             <>
-              Migrate the existing <strong>local game accounts</strong> to the new location, or start
-              fresh there? Live game sockets reconnect either way.
+              Migrate the existing <strong>local game accounts</strong> to the new location, or
+              start fresh there? Live game sockets reconnect either way.
             </>
           }
           onChoose={(migrate) => {
