@@ -138,6 +138,11 @@ std::string game_storage_dir(const Config& c) {
     return (std::filesystem::path(base) / "gameserver").generic_string();
 }
 
+std::string userscript_storage_dir(const Config& c) {
+    std::string base = c.cache.dir.empty() ? "." : c.cache.dir;
+    return (std::filesystem::path(base) / "userscripts").generic_string();
+}
+
 Url parse_upstream(const std::string& raw) {
     if (raw.empty()) throw ValidationError("upstream is required");
     auto u = Url::try_parse(raw);

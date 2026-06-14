@@ -18,6 +18,8 @@
 #include "server/gameserver/game/game_app.hpp"
 #include "server/http_types.hpp"
 #include "server/static_assets.hpp"
+#include "server/userscript_store.hpp"
+#include "server/userscript_updater.hpp"
 
 namespace sbc::server {
 
@@ -54,6 +56,10 @@ private:
     boost::asio::awaitable<void> handle_sse(ResponseWriter& w);
     boost::asio::awaitable<void> handle_get_homepage(Request& req, ResponseWriter& w);
 
+    // Userscript manager API (dedicated LevelDB store, not a config scope). All
+    // store calls bridge onto the blocking pool via net::run_blocking.
+    boost::asio::awaitable<void> handle_userscripts(Request& req, ResponseWriter& w);
+
     boost::asio::awaitable<cache::Stats> cache_stats();
     boost::asio::awaitable<void> clear_cache();
     // expire_cache soft-expires matching entries across stores (keeps bodies so
@@ -87,6 +93,12 @@ private:
     // game_ is the embedded local game server. It is a direct member (outside
     // State) so toggling localGameServer at runtime never tears it down.
     std::shared_ptr<gameserver::GameApp> game_;
+
+    // userscripts_ holds all userscript state in a dedicated LevelDB store;
+    // userscript_updater_ is its background auto-update *checker* (never applies).
+    // Both are direct members, independent of the active provider/config.
+    std::shared_ptr<UserscriptStore> userscripts_;
+    std::unique_ptr<UserscriptUpdater> userscript_updater_;
 
     mutable std::shared_mutex state_mu_;
     std::shared_ptr<const State> state_;

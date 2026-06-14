@@ -17,6 +17,7 @@
 #include "host/reverseproxy/provider.hpp"
 #include "net/blocking_pool.hpp"
 #include "net/io_runtime.hpp"
+#include "net/tls.hpp"
 #include "server/api_util.hpp"
 #include "server/gameserver/game_socket_local.hpp"
 #include "server/homepage.hpp"
@@ -78,6 +79,38 @@ ordered_json stats_json(const cache::Stats& s) {
     j["entries"] = s.entries;
     j["bytes"] = s.bytes;
     return j;
+}
+
+// percent_decode decodes %XX escapes and '+'-as-space in a query component, so
+// arbitrary GM value keys (which the frontend encodes with encodeURIComponent)
+// round-trip through ?key=K.
+std::string percent_decode(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (c == '+') {
+            out.push_back(' ');
+        } else if (c == '%' && i + 2 < s.size()) {
+            auto hex = [](char h) -> int {
+                if (h >= '0' && h <= '9') return h - '0';
+                if (h >= 'a' && h <= 'f') return h - 'a' + 10;
+                if (h >= 'A' && h <= 'F') return h - 'A' + 10;
+                return -1;
+            };
+            int hi = hex(s[i + 1]);
+            int lo = hex(s[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+            } else {
+                out.push_back(c);
+            }
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
 }
 
 // query_value returns the first value of query parameter `name` from a raw query
@@ -183,9 +216,17 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     std::string game_dir = config::game_storage_dir(cfg);
     game_ = std::make_shared<gameserver::GameApp>(ctx_.io->executor(), *ctx_.blocking, game_dir,
                                                   cfg.game_server_settings);
+    userscripts_ = UserscriptStore::open(config::userscript_storage_dir(cfg));
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
+
+    // The updater reads the live config (for socks5) via snapshot(); start it
+    // only once state_ is set. It records pending updates only — never applies.
+    userscript_updater_ = std::make_unique<UserscriptUpdater>(
+        ctx_.io->executor(), *ctx_.blocking, *ctx_.tls, userscripts_,
+        [this]() { return snapshot()->cfg; });
+    userscript_updater_->start();
 }
 
 Handler App::handler() {
@@ -400,9 +441,234 @@ asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const Sta
         j["online"] = game_ ? static_cast<std::int64_t>(game_->accounts().online_count()) : 0;
         j["rooms"] = game_ ? static_cast<std::int64_t>(game_->chatrooms().room_count()) : 0;
         co_await write_json(w, 200, j);
+    } else if (path == "/api/userscripts" || path.rfind("/api/userscripts/", 0) == 0) {
+        co_await handle_userscripts(req, w);
     } else {
         co_await not_found(w);
     }
+}
+
+asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
+    const std::string& path = req.path;
+    auto& bp = *ctx_.blocking;
+    auto store = userscripts_;
+
+    // Helper: turn a plain json (alpha-ordered) into the ordered_json write_json
+    // expects. Payloads here are small, so the dump/parse round-trip is cheap.
+    auto as_ordered = [](const nlohmann::json& j) { return ordered_json::parse(j.dump()); };
+
+    if (path == "/api/userscripts") {
+        if (req.is_get()) {
+            nlohmann::json arr = co_await net::run_blocking(bp, [store]() {
+                nlohmann::json out = nlohmann::json::array();
+                for (auto& s : store->list()) {
+                    nlohmann::json e = s;
+                    std::string id = s.value("id", "");
+                    if (auto p = store->get_pending(id)) {
+                        e["pendingUpdate"] = {{"version", p->value("version", "")},
+                                              {"fetchedAt", p->value("fetchedAt", std::int64_t{0})}};
+                    }
+                    out.push_back(std::move(e));
+                }
+                return out;
+            });
+            co_await write_json(w, 200, as_ordered(arr));
+        } else if (req.method == "POST") {
+            nlohmann::json script;
+            std::string err;
+            try {
+                script = nlohmann::json::parse(req.body);
+            } catch (const std::exception& e) {
+                err = std::string("decode userscript: ") + e.what();
+            }
+            if (!err.empty()) {
+                co_await write_error(w, 400, err);
+                co_return;
+            }
+            if (!script.is_object() || script.value("id", "").empty()) {
+                co_await write_error(w, 400, "userscript requires a non-empty id");
+                co_return;
+            }
+            try {
+                co_await net::run_blocking(bp, [store, script]() { store->put(script); });
+            } catch (const std::exception& e) {
+                err = e.what();
+            }
+            if (!err.empty()) {
+                co_await write_error(w, 500, err);
+                co_return;
+            }
+            co_await write_json(w, 200, as_ordered(script));
+        } else if (req.method == "DELETE") {
+            std::string id = percent_decode(query_value(req.raw_query, "script"));
+            if (id.empty()) {
+                co_await write_error(w, 400, "missing script id");
+                co_return;
+            }
+            co_await net::run_blocking(bp, [store, id]() { store->remove(id); });
+            ordered_json j;
+            j["ok"] = true;
+            co_await write_json(w, 200, j);
+        } else {
+            co_await method_not_allowed(w);
+        }
+        co_return;
+    }
+
+    if (path == "/api/userscripts/reorder") {
+        if (req.method != "POST") {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::vector<std::string> ids;
+        std::string err;
+        try {
+            nlohmann::json body = nlohmann::json::parse(req.body);
+            if (!body.is_array()) throw Error("body must be a JSON array of ids");
+            for (auto& v : body) ids.push_back(v.get<std::string>());
+        } catch (const std::exception& e) {
+            err = std::string("decode reorder: ") + e.what();
+        }
+        if (!err.empty()) {
+            co_await write_error(w, 400, err);
+            co_return;
+        }
+        co_await net::run_blocking(bp, [store, ids]() { store->reorder(ids); });
+        ordered_json j;
+        j["ok"] = true;
+        co_await write_json(w, 200, j);
+        co_return;
+    }
+
+    if (path == "/api/userscripts/pending") {
+        if (!req.is_get()) {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::string id = percent_decode(query_value(req.raw_query, "script"));
+        auto pending = co_await net::run_blocking(
+            bp, [store, id]() { return store->get_pending(id); });
+        if (!pending) {
+            co_await not_found(w);
+            co_return;
+        }
+        co_await write_json(w, 200, as_ordered(*pending));
+        co_return;
+    }
+
+    if (path == "/api/userscripts/apply-update") {
+        if (req.method != "POST") {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::string id = percent_decode(query_value(req.raw_query, "script"));
+        auto updated = co_await net::run_blocking(
+            bp, [store, id]() { return store->apply_pending(id); });
+        if (!updated) {
+            co_await write_error(w, 404, "no pending update for script");
+            co_return;
+        }
+        co_await write_json(w, 200, as_ordered(*updated));
+        co_return;
+    }
+
+    if (path == "/api/userscripts/dismiss-update") {
+        if (req.method != "POST") {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        std::string id = percent_decode(query_value(req.raw_query, "script"));
+        co_await net::run_blocking(bp, [store, id]() { store->clear_pending(id); });
+        ordered_json j;
+        j["ok"] = true;
+        co_await write_json(w, 200, j);
+        co_return;
+    }
+
+    if (path == "/api/userscripts/values") {
+        std::string id = percent_decode(query_value(req.raw_query, "script"));
+        if (id.empty()) {
+            co_await write_error(w, 400, "missing script id");
+            co_return;
+        }
+        if (req.is_get()) {
+            nlohmann::json vals =
+                co_await net::run_blocking(bp, [store, id]() { return store->values(id); });
+            co_await write_json(w, 200, as_ordered(vals));
+        } else if (req.method == "PUT") {
+            std::string key = percent_decode(query_value(req.raw_query, "key"));
+            if (key.empty()) {
+                co_await write_error(w, 400, "missing value key");
+                co_return;
+            }
+            std::string raw = req.body;
+            std::string err;
+            try {
+                co_await net::run_blocking(
+                    bp, [store, id, key, raw]() { store->set_value(id, key, raw); });
+            } catch (const std::exception& e) {
+                err = std::string("set value: ") + e.what();
+            }
+            if (!err.empty()) {
+                co_await write_error(w, 400, err);
+                co_return;
+            }
+            ordered_json j;
+            j["ok"] = true;
+            co_await write_json(w, 200, j);
+        } else if (req.method == "DELETE") {
+            std::string key = percent_decode(query_value(req.raw_query, "key"));
+            if (key.empty()) {
+                co_await write_error(w, 400, "missing value key");
+                co_return;
+            }
+            co_await net::run_blocking(bp, [store, id, key]() { store->del_value(id, key); });
+            ordered_json j;
+            j["ok"] = true;
+            co_await write_json(w, 200, j);
+        } else {
+            co_await method_not_allowed(w);
+        }
+        co_return;
+    }
+
+    if (path == "/api/userscripts/settings") {
+        if (req.is_get()) {
+            nlohmann::json s =
+                co_await net::run_blocking(bp, [store]() { return store->get_settings(); });
+            co_await write_json(w, 200, as_ordered(s));
+        } else if (req.method == "PUT") {
+            nlohmann::json settings;
+            std::string err;
+            try {
+                settings = nlohmann::json::parse(req.body);
+                if (!settings.is_object()) throw Error("settings must be a JSON object");
+            } catch (const std::exception& e) {
+                err = std::string("decode settings: ") + e.what();
+            }
+            if (!err.empty()) {
+                co_await write_error(w, 400, err);
+                co_return;
+            }
+            co_await net::run_blocking(bp, [store, settings]() { store->set_settings(settings); });
+            co_await write_json(w, 200, as_ordered(settings));
+        } else {
+            co_await method_not_allowed(w);
+        }
+        co_return;
+    }
+
+    if (path == "/api/userscripts/check-updates") {
+        if (req.method != "POST") {
+            co_await method_not_allowed(w);
+            co_return;
+        }
+        nlohmann::json summary = co_await userscript_updater_->check_now();
+        co_await write_json(w, 200, as_ordered(summary));
+        co_return;
+    }
+
+    co_await not_found(w);
 }
 
 asio::awaitable<void> App::handle_get_config(ResponseWriter& w) {
@@ -877,6 +1143,7 @@ asio::awaitable<void> App::handle_get_homepage(Request& req, ResponseWriter& w) 
 }
 
 void App::close() {
+    if (userscript_updater_) userscript_updater_->stop();
     if (game_) game_->close();
     auto state = snapshot();
     if (state && state->provider) state->provider->close();
