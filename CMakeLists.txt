@@ -97,6 +97,10 @@ if(WIN32)
   target_compile_definitions(sbc_core PUBLIC _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
 
+if(MSVC)
+  target_compile_options(sbc_core PUBLIC /bigobj)
+endif()
+
 # Optional: embed web assets
 if(SBC_EMBED_WEB)
   include(cmake/EmbedWebAssets.cmake)
