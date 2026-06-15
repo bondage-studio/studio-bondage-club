@@ -257,7 +257,8 @@ json UserscriptStore::get_settings() {
     try {
         json parsed = json::parse(val);
         // Backfill any missing defaults.
-        for (auto& [k, v] : default_settings().items()) {
+        json defaults = default_settings();
+        for (auto& [k, v] : defaults.items()) {
             if (!parsed.contains(k)) parsed[k] = v;
         }
         return parsed;
