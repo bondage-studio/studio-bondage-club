@@ -15,14 +15,14 @@ namespace sbc::server::gameserver {
 
 struct ChatRoom;
 
-// OnlineAccount is a logged-in account held in memory, mirroring an entry of the
-// original server's `Account[]` array. `data` is the dynamic account object
-// (Name, AccountName, MemberNumber, Appearance, FriendList, Ownership, ...); the
-// other members are runtime-only state that is never persisted directly.
+// OnlineAccount is a logged-in account held in memory. `data` is the dynamic
+// account object (Name, AccountName, MemberNumber, Appearance, FriendList,
+// Ownership, ...); the other members are runtime-only state that is never
+// persisted directly.
 //
 // All access to the mutable members is serialized by AccountManager's mutex.
 struct OnlineAccount {
-    std::string id;  // socket id (== Engine.IO sid); BC's Account.ID
+    std::string id;  // socket id (== Engine.IO sid)
     std::shared_ptr<socketio::Socket> socket;
     nlohmann::json data;  // persistable account fields + runtime Environment
 

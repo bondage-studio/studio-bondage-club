@@ -15,9 +15,8 @@ class DB;
 namespace sbc::server::gameserver {
 
 // GameDb is the embedded game server's persistent account store, backed by its
-// own LevelDB instance (separate from the cache stores). It mirrors the open
-// pattern of cache::LevelDbStore but uses raw game keys rather than the cache's
-// metadata/body split.
+// own LevelDB instance (separate from the cache stores). It uses raw game keys
+// rather than the cache's metadata/body split.
 //
 // Keys:
 //   acc/name/<UPPER_ACCOUNTNAME>  -> full account JSON
@@ -28,7 +27,6 @@ namespace sbc::server::gameserver {
 // net::run_blocking).
 class GameDb {
 public:
-    // open creates/opens the LevelDB database under `dir`.
     static std::shared_ptr<GameDb> open(const std::string& dir);
     ~GameDb();
 
@@ -52,7 +50,6 @@ public:
     // the account does not exist.
     void update_account_fields(const std::string& upper_name, const nlohmann::json& fields);
 
-    // next_member_number returns the current counter and increments+persists it.
     std::int64_t next_member_number();
 
     // accounts_by_email scans all accounts for ones whose Email matches (case

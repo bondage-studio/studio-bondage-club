@@ -176,10 +176,10 @@ asio::awaitable<void> AccountManager::account_create(std::shared_ptr<socketio::S
     const std::regex acct_re("^[a-zA-Z0-9]{1," + len + "}$");
     if (!matches(name, name_re) || !matches(account_name, acct_re) ||
         !matches(password, acct_re) || !email_ok(email, cfg->email_max_len)) {
-        co_return;  // matches app.js: invalid format is silently ignored
+        co_return;
     }
 
-    // Per-IP account-creation rate limit (12/day total, 4/hour by default), as in app.js.
+    // Per-IP account-creation rate limit.
     const int kMaxPerDay = cfg->account_create_per_day;
     const int kMaxPerHour = cfg->account_create_per_hour;
     std::string address = socket->address();
@@ -300,7 +300,6 @@ asio::awaitable<void> AccountManager::run_login_queue() {
             if (!more) login_running_ = false;
         }
         if (!more) co_return;
-        // Login pacing between logins (50ms by default), mirroring the original server.
         asio::steady_timer pacer(ex_, milliseconds(settings_.snapshot()->login_pace_ms));
         boost::system::error_code ec;
         co_await pacer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
@@ -448,10 +447,8 @@ void AccountManager::account_update(const std::string& socket_id, json data) {
 
         for (const char* k : immutable) data.erase(k);
 
-        // Merge remaining fields into the in-memory account. Dotted keys (e.g.
-        // "ExtensionSettings.BCX") are expanded into nested paths to mirror the
-        // original MongoDB-backed server, keeping the in-memory copy consistent
-        // with what gets persisted. See common/json_merge.hpp.
+        // Dotted keys (e.g. "ExtensionSettings.BCX") update nested paths so the
+        // in-memory account matches what gets persisted.
         merge_set_fields(acc->data, data);
 
         // Delayed single-field updates are kept in memory, not written immediately.
@@ -607,7 +604,7 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
     std::int64_t target_member = data["MemberNumber"].get<std::int64_t>();
     std::string action =
         (data.contains("Action") && data["Action"].is_string()) ? data["Action"].get<std::string>() : "";
-    const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;  // 7 days by default
+    const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;
 
     std::lock_guard<std::mutex> lock(gs_.mu);
     auto sit = gs_.by_socket.find(socket_id);
@@ -650,7 +647,7 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
 
     // Release a target who is not in the room (looked up from the DB).
     if (!target && action == "Release") {
-        std::int64_t room_id_holder = my;  // capture acting member; room messages target the actor
+        std::int64_t room_id_holder = my;
         (void)room_id_holder;
         ChatRoom* room_ptr = acc->chat_room;
         asio::co_spawn(
@@ -845,7 +842,7 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
     std::int64_t target_member = data["MemberNumber"].get<std::int64_t>();
     std::string action =
         (data.contains("Action") && data["Action"].is_string()) ? data["Action"].get<std::string>() : "";
-    const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;  // 7 days by default
+    const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;
 
     // Strips offer/dating bookkeeping then persists the lovership by member number.
     auto update_lovership = [this](json lovership, std::int64_t member,
@@ -1156,8 +1153,7 @@ void AccountManager::account_difficulty(const std::string& socket_id, json data)
             acc->data["Difficulty"].contains("LastChange") &&
             acc->data["Difficulty"]["LastChange"].is_number_integer())
             last_change = acc->data["Difficulty"]["LastChange"].get<std::int64_t>();
-        const std::int64_t kDifficultyDelay =
-            settings_.snapshot()->relationship_delay_ms;  // 7 days by default
+        const std::int64_t kDifficultyDelay = settings_.snapshot()->relationship_delay_ms;
         if (level > 1 && last_change + kDifficultyDelay >= now_ms()) return;
         json diff = {{"Level", level}, {"LastChange", now_ms()}};
         acc->data["Difficulty"] = diff;

@@ -50,7 +50,6 @@ interface CodeEditorProps {
   className?: string;
 }
 
-/** Editable JavaScript editor. Controlled via `value`/`onChange`. */
 export function CodeEditor({
   value,
   onChange,
@@ -121,14 +120,11 @@ export function CodeEditor({
 }
 
 interface DiffEditorProps {
-  /** Left/original side. */
   original: string;
-  /** Right/modified side. */
   modified: string;
   className?: string;
 }
 
-/** Read-only side-by-side diff (current vs. incoming update). */
 export function DiffEditor({ original, modified, className }: DiffEditorProps) {
   const container = useShadowContainer();
   const hostRef = useRef<HTMLDivElement>(null);

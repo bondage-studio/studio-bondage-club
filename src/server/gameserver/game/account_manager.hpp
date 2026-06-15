@@ -33,21 +33,17 @@ class Socket;
 class SocketIoServer;
 }  // namespace socketio
 
-// AccountManager ports the account-related event handlers of the original BC
-// server (AccountCreate / AccountLogin / AccountUpdate / AccountQuery), plus the
-// in-memory account registry, the login queue, the periodic ServerInfo broadcast,
-// and the delayed appearance/skill/game database flush.
+// AccountManager owns account event handlers, the online-account registry, login
+// queue, periodic ServerInfo broadcast, and delayed appearance/skill/game flush.
 class AccountManager {
 public:
     AccountManager(boost::asio::any_io_executor ex, net::BlockingPool& blocking, GameDb& db,
                    socketio::SocketIoServer& hub, Mailer& mailer, GameState& state,
                    const GameSettings& settings);
 
-    // start launches the periodic timers (ServerInfo every 60s, delayed flush
-    // every 300s).
+    // Starts the periodic ServerInfo broadcast and delayed flush timers.
     void start();
 
-    // close flushes pending delayed updates and stops timers.
     void close();
 
     // on_socket_connected registers the pre-login event handlers on a freshly
@@ -73,8 +69,6 @@ public:
     using DisconnectHook = std::function<void(std::shared_ptr<OnlineAccount>)>;
     void set_disconnect_hook(DisconnectHook hook) { disconnect_hook_ = std::move(hook); }
 
-    // set_chatrooms links the chat-room manager so the ownership/lovership flows
-    // can emit room messages and character syncs.
     void set_chatrooms(ChatRoomManager* chatrooms) { chatrooms_ = chatrooms; }
 
 private:
@@ -120,7 +114,7 @@ private:
     const GameSettings& settings_;  // live, COW policy knobs
 
     // Login queue: [socket, UPPER name, password]. Processed one at a time with
-    // 50ms pacing, mirroring the original server.
+    // login_pace_ms spacing.
     std::mutex login_mu_;
     std::deque<std::tuple<std::shared_ptr<socketio::Socket>, std::string, std::string>> login_queue_;
     bool login_running_ = false;
@@ -134,8 +128,8 @@ private:
     std::unordered_map<std::string, std::string> password_resets_;
     std::int64_t next_password_reset_ = 0;
 
-    // Account-creation rate limit per IP: (address, time) entries, never pruned
-    // (matching the original server's AccountCreationIP array).
+    // Account-creation rate limit per IP. Entries are intentionally never pruned
+    // so the daily total remains cumulative for the process lifetime.
     std::mutex creation_mu_;
     std::vector<std::pair<std::string, std::int64_t>> account_creation_ip_;
 

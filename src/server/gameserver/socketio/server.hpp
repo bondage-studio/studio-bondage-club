@@ -25,8 +25,7 @@ class Socket;
 
 // TransportLimits carries the Engine.IO/rate-limit knobs the transport layer
 // needs. It is a plain struct (no config dependency) so the socketio layer stays
-// decoupled from the game; GameApp pushes updated values via set_limits(). The
-// defaults reproduce the original BC server's hardcoded values.
+// decoupled from the game; GameApp pushes updated values via set_limits().
 struct TransportLimits {
     int ping_interval_ms = 50000;
     int ping_timeout_ms = 30000;
@@ -38,9 +37,8 @@ struct TransportLimits {
 
 // SocketIoServer is the connection hub: it owns the Engine.IO/Socket.IO session
 // registry and the room index, dispatches inbound HTTP requests to the right
-// connection, and fans out broadcasts. It is the C++ analog of the socket.io
-// `IO` object. Layering: it knows nothing about the BC game; game logic is
-// installed via the connect handler.
+// connection, and fans out broadcasts. Layering: it knows nothing about the game;
+// game logic is installed via the connect handler.
 class SocketIoServer {
 public:
     using ConnectHandler = std::function<void(std::shared_ptr<Socket>)>;
@@ -63,7 +61,6 @@ public:
     // the Engine.IO handshake, long-poll traffic, and WebSocket upgrades.
     boost::asio::awaitable<void> handle_request(Request& req, ResponseWriter& w);
 
-    // find returns the connection for a session id, or nullptr.
     std::shared_ptr<Connection> find(const std::string& sid);
 
     // Invoked by Connection on a completed CONNECT / on teardown. `address` is the
@@ -81,11 +78,9 @@ public:
                       const nlohmann::json& data, const std::string& except_sid = {});
     void emit_to_all(std::string_view event, const nlohmann::json& data);
 
-    // online_count / room_count expose hub status for the admin panel.
     std::size_t online_count();
     std::size_t room_count();
 
-    // disconnect_all closes every connection (used on shutdown).
     void disconnect_all();
 
 private:
@@ -109,9 +104,8 @@ private:
     std::shared_mutex room_mu_;
     std::unordered_map<std::string, std::unordered_set<std::string>> rooms_;
 
-    // Per-IP connection tracking for the connection/rate limit (mirrors the
-    // original server's IPConnections map). Each entry is the list of active
-    // connection timestamps for that address.
+    // Per-IP connection tracking for the connection/rate limit. Each entry is
+    // the list of active connection timestamps for that address.
     bool register_ip_connection(const std::string& address);
     void release_ip_connection(const std::string& address);
     std::mutex ip_mu_;

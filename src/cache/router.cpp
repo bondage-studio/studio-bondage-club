@@ -10,12 +10,11 @@ namespace sbc::cache {
 
 namespace {
 
-// glob_segment matches a Go path.Match glob against text where '*' matches any
-// run of non-'/' characters. Supports ?, * and [set]/[^set] character classes.
+// glob_segment matches a path glob against text where '*' matches any run of
+// non-'/' characters. Supports ?, * and [set]/[^set] character classes.
 bool glob_here(const std::string& pat, std::size_t pi, const std::string& text, std::size_t ti);
 
 bool match_class(const std::string& pat, std::size_t& pi, char c, bool& valid) {
-    // pat[pi] == '['
     ++pi;
     bool negated = false;
     if (pi < pat.size() && (pat[pi] == '^' || pat[pi] == '!')) {
@@ -41,10 +40,10 @@ bool match_class(const std::string& pat, std::size_t& pi, char c, bool& valid) {
         }
     }
     if (pi >= pat.size() || pat[pi] != ']') {
-        valid = false;  // malformed class
+        valid = false;
         return false;
     }
-    ++pi;  // consume ']'
+    ++pi;
     return negated ? !matched : matched;
 }
 
@@ -70,7 +69,6 @@ bool glob_here(const std::string& pat, std::size_t pi, const std::string& text, 
             std::size_t save = pi;
             bool m = match_class(pat, pi, text[ti], valid);
             if (!valid) {
-                // treat '[' literally
                 pi = save;
                 if (text[ti] != '[') return false;
                 ++pi;

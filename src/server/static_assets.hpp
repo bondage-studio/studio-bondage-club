@@ -25,14 +25,11 @@ public:
 // filesystem rooted at $SBC_WEB_ROOT or ./web/dist).
 std::shared_ptr<AssetSource> default_asset_source();
 
-// content_type_for returns a MIME type for a filename based on its extension.
 std::string content_type_for(const std::string& filename);
 
-// serve_web_asset serves a file under the admin base path from web/dist.
 boost::asio::awaitable<void> serve_web_asset(Request& req, ResponseWriter& w,
                                              const std::string& base_path, AssetSource& source);
 
-// serve_service_worker serves web/dist/studio-service-worker.js.
 boost::asio::awaitable<void> serve_service_worker(Request& req, ResponseWriter& w,
                                                   AssetSource& source);
 

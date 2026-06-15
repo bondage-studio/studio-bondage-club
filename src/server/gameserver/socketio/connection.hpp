@@ -40,8 +40,6 @@ public:
     const std::string& sid() const { return sid_; }
     const std::string& address() const { return address_; }
 
-    // start spawns the heartbeat loop. Call once, after registering the
-    // connection with the hub.
     void start();
 
     // drain_for_poll services an Engine.IO long-poll GET: returns the next batch
@@ -64,7 +62,6 @@ public:
     // a parked poll. Safe to call from any thread.
     void enqueue_eio(std::string packet);
 
-    // emit sends a Socket.IO EVENT to this connection.
     void emit(std::string_view event, const nlohmann::json& data);
 
     // Handler registration. Called on the strand (during the connect handler).
@@ -73,7 +70,6 @@ public:
     void set_disconnect_handler(DisconnectHandler fn);
     void set_any_handler(AnyHandler fn);
 
-    // disconnect closes the connection from the server side.
     void disconnect();
 
     // Room membership bookkeeping (the hub owns the room->member index; these

@@ -149,8 +149,7 @@ void Connection::handle_sio_payload(std::string_view payload) {
 }
 
 void Connection::dispatch_event(const std::string& event, const nlohmann::json& data) {
-    // Per-client message rate limit (matches the original server's onAny bucket):
-    // more than `limit` events within a second drops the client. The window size
+    // More than `limit` events within a second drops the client. The window size
     // tracks the live setting, so a settings change applies on the next event.
     int limit = hub_ ? hub_->limits().message_rate_per_sec : 20;
     if (limit < 1) limit = 1;
@@ -185,7 +184,7 @@ void Connection::note_left(const std::string& room) { rooms_.erase(room); }
 void Connection::disconnect() {
     asio::post(strand_, [self = shared_from_this()]() {
         if (self->closing_) return;
-        self->push_locked(eio::message("1"));  // Socket.IO DISCONNECT
+        self->push_locked(eio::message("1"));
         self->do_disconnect("server namespace disconnect");
     });
 }
@@ -232,7 +231,7 @@ asio::awaitable<void> Connection::heartbeat_loop() {
         spdlog::info("[eio {}] heartbeat: sending PING (ws_mode={}, on_strand={}, tid={})", sid_,
                      ws_mode_, strand_.running_in_this_thread(),
                      std::hash<std::thread::id>{}(std::this_thread::get_id()));
-        push_locked(std::string(1, static_cast<char>(eio::PacketType::Ping)));  // "2"
+        push_locked(std::string(1, static_cast<char>(eio::PacketType::Ping)));
         ping_timer_.expires_after(milliseconds(timeout));
         co_await ping_timer_.async_wait(asio::redirect_error(asio::use_awaitable, ec));
         if (closing_) break;

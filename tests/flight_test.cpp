@@ -35,7 +35,7 @@ SBC_TEST(flight_coalesces_concurrent_calls) {
     for (int i = 0; i < 5; ++i) asio::co_spawn(ioc, worker(i), asio::detached);
     ioc.run();
 
-    CHECK(calls.load() == 1);  // only the leader ran the work
+    CHECK(calls.load() == 1);
     for (int i = 0; i < 5; ++i) CHECK(results[i] == 42);
 }
 

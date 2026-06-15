@@ -114,11 +114,9 @@ SBC_TEST(rooms_broadcast_reaches_members) {
     ioc.run();
 
     CHECK(done);
-    // a and b receive the broadcast event.
     CHECK(drained_a.find("ChatRoomMessage") != std::string::npos);
     CHECK(drained_a.find("\"hi\"") != std::string::npos);
     CHECK(drained_b.find("ChatRoomMessage") != std::string::npos);
-    // c was excluded from the broadcast; it only sees the direct event.
     CHECK(drained_c.find("ChatRoomMessage") == std::string::npos);
     CHECK(drained_c.find("Direct") != std::string::npos);
 
@@ -156,5 +154,5 @@ SBC_TEST(rooms_leave_removes_membership) {
     CHECK(done);
     CHECK(drained.find("ChatRoomMessage") == std::string::npos);
     CHECK(drained.find("Direct") != std::string::npos);
-    CHECK(hub.room_count() == 0);  // empty room pruned
+    CHECK(hub.room_count() == 0);
 }

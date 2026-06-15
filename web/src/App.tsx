@@ -55,9 +55,7 @@ type PageDef = {
   icon: ReactNode;
   label: string;
   description: string;
-  // Hidden in the Android build (native app owns the whole tab).
   androidHidden?: boolean;
-  // Only present in the Android build.
   androidOnly?: boolean;
 };
 
@@ -184,7 +182,6 @@ function App() {
     );
   }
 
-  // Initial full load (and a hard reset of every section).
   async function refresh() {
     setBusy(true);
     setError("");
@@ -245,7 +242,6 @@ function App() {
     }
   }
 
-  // Cache save intercepts a directory change to ask about migrating data.
   function handleSaveCache() {
     if (!form || !snapshot) return;
     if (form.cache.dir !== snapshot.config.cache.dir) {
@@ -255,8 +251,6 @@ function App() {
     void saveScope("cache");
   }
 
-  // Game-server save intercepts a storage-path change to ask about migrating the
-  // account database (mirrors the cache-dir flow).
   function handleSaveGameServer() {
     if (!form || !snapshot) return;
     if (form.gameServerStoragePath !== snapshot.config.gameServerStoragePath) {
@@ -517,9 +511,7 @@ function App() {
         </Window.Body>
       </Window>
 
-      {/* Editor windows — mounted only while open so each open starts from a
-          fresh form derived from the item being edited. They render after the
-          main window, so they stack above it by DOM order. */}
+      {/* Editors mount after the main window so they stack above it by DOM order. */}
       {form && storeEditorOpen && (
         <StoreEditor
           key={editingStoreIdx ?? "new-store"}

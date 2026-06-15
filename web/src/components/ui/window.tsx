@@ -10,7 +10,6 @@ import { WindowPortal } from "./window-portal";
 type Slot = "title" | "actions" | "body" | "footer";
 
 interface TitleProps {
-  /** Leading icon shown before the title text. */
   icon?: ReactNode;
   children?: ReactNode;
 }
@@ -19,7 +18,6 @@ interface SlotProps {
   className?: string;
 }
 
-/** Tag a slot component so the parent <Window> can locate it among its children. */
 function tagSlot<P>(component: (props: P) => ReactElement | null, slot: Slot) {
   (component as { __slot?: Slot }).__slot = slot;
   return component;
@@ -29,32 +27,18 @@ function isSlot<P>(node: ReactNode, slot: Slot): node is ReactElement<P> {
   return isValidElement(node) && (node.type as { __slot?: Slot })?.__slot === slot;
 }
 
-/**
- * Title-bar label. Use `icon` for a leading glyph.
- * `<Window.Title icon={<Foo />}>Label</Window.Title>`
- */
 const WindowTitle = tagSlot<TitleProps>(() => null, "title");
 
-/** Extra controls placed in the title bar, before the pop-out/close buttons. */
 const WindowActions = tagSlot<SlotProps>(() => null, "actions");
 
-/** Main scrollable content region (fills the available height). */
 const WindowBody = tagSlot<SlotProps>(() => null, "body");
 
-/** Pinned bottom slot (e.g. an action / status bar). */
 const WindowFooter = tagSlot<SlotProps>(() => null, "footer");
 
 export interface WindowProps {
-  /** Plain-text title used for the popped-out native window's document.title. */
   documentTitle?: string;
-  /**
-   * Composed via slots:
-   * `<Window.Title>`, `<Window.Actions>`, `<Window.Body>`, `<Window.Footer>`.
-   * Any non-slot children are treated as body content.
-   */
   children: ReactNode;
   onClose?: () => void;
-  /** Show the "open in separate window" button. */
   poppable?: boolean;
   defaultWidth?: number;
   defaultHeight?: number;
@@ -70,21 +54,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * A draggable, resizable floating window styled like a desktop config dialog.
- * Can pop itself out into a real separate browser window.
- *
- * Compose it with its slot subcomponents:
- *
- * ```tsx
- * <Window poppable onClose={...}>
- *   <Window.Title icon={<Settings />}>Configuration</Window.Title>
- *   <Window.Actions>{extraButtons}</Window.Actions>
- *   <Window.Body>{content}</Window.Body>
- *   <Window.Footer>{statusBar}</Window.Footer>
- * </Window>
- * ```
- */
 export function Window({
   documentTitle,
   children,

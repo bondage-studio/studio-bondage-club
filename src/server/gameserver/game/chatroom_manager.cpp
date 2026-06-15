@@ -382,7 +382,7 @@ void ChatRoomManager::chat_room_create(std::shared_ptr<socketio::Socket> socket,
         return;
     }
 
-    // Backward-compat: Visibility<->Private and Access<->Locked.
+    // Accept either field generation for room privacy/access.
     bool has_visibility = data.contains("Visibility") && data["Visibility"].is_array();
     bool has_private = data.contains("Private") && data["Private"].is_boolean();
     if (has_visibility == has_private) {
@@ -754,7 +754,7 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
                 acc->socket->emit("ChatRoomUpdateResponse", "RoomAlreadyExist");
                 return;
             }
-        // Backward-compat Visibility<->Private, Access<->Locked.
+        // Accept either field generation for room privacy/access.
         if (r.contains("Visibility") && r["Visibility"].is_array())
             r["Private"] = !has_str(r["Visibility"], "All");
         else if (r.contains("Private") && r["Private"].is_boolean())

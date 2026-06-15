@@ -25,8 +25,8 @@ std::string read_file(const std::filesystem::path& path) {
     return ss.str();
 }
 
-// reject_unknown throws Go's "json: unknown field" error for any key not in the
-// allowed set. Keys are matched case-sensitively (as Go's decoder does).
+// reject_unknown throws the "json: unknown field" error expected by the API for
+// any key not in the allowed set. Keys are matched case-sensitively.
 void reject_unknown(const ordered_json& obj, std::initializer_list<const char*> allowed) {
     std::set<std::string> ok(allowed.begin(), allowed.end());
     for (auto it = obj.begin(); it != obj.end(); ++it) {

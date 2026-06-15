@@ -23,7 +23,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // SBC_CONFIG_DIR / SBC_CACHE_DIR land in the app's private storage.
         val address = NativeServer.nativeStart(filesDir.absolutePath, cacheDir.absolutePath, HOST, PORT)
         if (address.isEmpty()) {
             Toast.makeText(this, "Failed to start local server", Toast.LENGTH_LONG).show()
@@ -42,8 +41,8 @@ class MainActivity : Activity() {
                 databaseEnabled = true
                 mediaPlaybackRequiresUserGesture = false
                 allowContentAccess = true
-                // The native UA token tells originalPage.ts to skip the service
-                // worker and rely on this hook instead.
+                // Android routes cross-origin requests through WebViewClient,
+                // so the web bundle must not install its service worker.
                 userAgentString = "$userAgentString StudioBC-Android"
             }
             webViewClient = LocalProxyWebViewClient(localOrigin)
@@ -125,7 +124,6 @@ class MainActivity : Activity() {
  */
 private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
 
-    // e.g. "http://127.0.0.1:8080"
     private val localOriginUrl = URL(localOrigin)
 
     override fun shouldInterceptRequest(
@@ -135,7 +133,6 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
         val uri = request.url
         val method = request.method ?: "GET"
 
-        // Same-origin (game assets, /api, /socket.io): let the WebView load it.
         if (isSameOrigin(uri.scheme, uri.host, uri.port)) {
             return null
         }
@@ -149,7 +146,7 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
             proxyThroughLocalServer(uri.toString(), method, request.requestHeaders)
         } catch (e: Exception) {
             Log.w(TAG, "proxy failed for $uri: ${e.message}")
-            null // fall back to a direct network load
+            null
         }
     }
 
@@ -165,7 +162,6 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
         method: String,
         requestHeaders: Map<String, String>
     ): WebResourceResponse {
-        // Mirror toRemoteLoaderURL: "<origin>/<full original url>".
         val loaderUrl = URL(localOriginUrl, "/$originalUrl")
         val conn = (loaderUrl.openConnection() as HttpURLConnection).apply {
             requestMethod = method
@@ -173,7 +169,7 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
             connectTimeout = 30_000
             readTimeout = 30_000
             for ((name, value) in requestHeaders) {
-                if (name.equals("Host", true)) continue // managed by the connection
+                if (name.equals("Host", true)) continue
                 setRequestProperty(name, value)
             }
         }
@@ -184,11 +180,10 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
 
         val responseHeaders = LinkedHashMap<String, String>()
         for ((name, values) in conn.headerFields) {
-            if (name == null) continue // the HTTP status line has a null key
+            if (name == null) continue
             responseHeaders[name] = values.joinToString(", ")
         }
-        // The response is delivered as if it came from the original cross-origin
-        // URL, so make it CORS-safe for fetch()-mode loads.
+        // WebView receives this as the target URL's response, so fetch() needs CORS.
         responseHeaders["Access-Control-Allow-Origin"] = "*"
 
         val body = if (status >= 400) conn.errorStream else conn.inputStream

@@ -77,13 +77,11 @@ http::request<http::empty_body> rebuild_request(const Request& req) {
 asio::awaitable<void> relay_websocket(Request& req, ResponseWriter& w, const Url& target,
                                       const std::string& spoofed_origin, net::TlsContext& tls,
                                       asio::any_io_executor ex) {
-    // Take over the raw client socket and complete the WebSocket handshake.
     net::HijackedConnection conn = w.hijack();
     websocket::stream<beast::tcp_stream> client(std::move(conn.stream));
     client.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
     co_await client.async_accept(rebuild_request(req), asio::use_awaitable);
 
-    // Resolve + connect the upstream game server.
     std::string host = target.host();
     std::uint16_t port = target.port();
     std::string path = target.encoded_path();

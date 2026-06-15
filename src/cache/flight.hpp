@@ -18,9 +18,8 @@
 namespace sbc::cache {
 
 // FlightGroup coalesces concurrent operations on the same key: only the first
-// caller (leader) runs the work; others wait and share the result. This is the
-// coroutine-aware analog of Go's singleflight/FlightGroup, built on a
-// steady_timer used as a one-shot async event (no thread blocking).
+// caller (leader) runs the work; others wait and share the result. It is built
+// on a steady_timer used as a one-shot async event (no thread blocking).
 template <typename T>
 class FlightGroup {
 public:

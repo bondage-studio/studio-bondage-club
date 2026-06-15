@@ -24,8 +24,8 @@ using SteadyClock = std::chrono::steady_clock;
 
 namespace {
 
-constexpr auto kIdleMax = std::chrono::seconds(90);   // drop pooled conns idle longer than this
-constexpr std::size_t kMaxIdlePerHost = 8;            // cap idle conns kept per upstream
+constexpr auto kIdleMax = std::chrono::seconds(90);
+constexpr std::size_t kMaxIdlePerHost = 8;
 
 bool iequals(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
@@ -112,7 +112,7 @@ asio::awaitable<ClientResponse> do_request(Stream& stream, const ClientRequest& 
     beast::flat_buffer buffer;
     http::response_parser<http::buffer_body> parser;
     parser.body_limit(boost::none);
-    parser.skip(iequals(req.method, "HEAD"));  // HEAD has no body to read
+    parser.skip(iequals(req.method, "HEAD"));
     co_await http::async_read_header(stream, buffer, parser, asio::use_awaitable);
     committed = true;
 

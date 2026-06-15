@@ -16,8 +16,8 @@
 namespace sbc::net {
 
 // BlockingPool offloads synchronous, potentially-blocking work (LevelDB calls,
-// temp-file I/O) off the Asio I/O threads, mirroring Go's goroutine-per-syscall
-// model. Coroutines bridge onto it via run_blocking().
+// temp-file I/O) off the Asio I/O threads. Coroutines bridge onto it via
+// run_blocking().
 class BlockingPool {
 public:
     explicit BlockingPool(std::size_t threads = 4) : pool_(threads) {}

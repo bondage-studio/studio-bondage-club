@@ -17,23 +17,7 @@ interface PendingConfirm {
   resolve: (result: boolean) => void;
 }
 
-/**
- * Provides an imperative, promise-based confirm service. Wrap the app once:
- *
- * ```tsx
- * <ConfirmProvider><App /></ConfirmProvider>
- * ```
- *
- * then anywhere inside:
- *
- * ```tsx
- * const confirm = useConfirm();
- * if (await confirm({ title: "Delete?", destructive: true })) { ... }
- * ```
- *
- * Only one dialog is shown at a time; a second call replaces the first (the
- * superseded promise resolves to `false`).
- */
+// Only one dialog is shown at a time; a second call resolves the first as false.
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
 
@@ -68,7 +52,6 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Returns the `confirm(options) => Promise<boolean>` function. */
 export function useConfirm(): ConfirmFn {
   const ctx = useContext(ConfirmContext);
   if (!ctx) {

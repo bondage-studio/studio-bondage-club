@@ -12,8 +12,7 @@
 
 namespace sbc::server {
 
-// ResponseWriter is the handler-facing output interface, the C++ analog of Go's
-// http.ResponseWriter. It supports three modes:
+// ResponseWriter is the handler-facing output interface. It supports three modes:
 //   1. Buffered:  write_full() in one shot (JSON/API/homepage).
 //   2. Streaming: send_header() then write_chunk()* then finish() (cache serve,
 //      proxy pass, SSE).

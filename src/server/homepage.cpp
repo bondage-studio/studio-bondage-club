@@ -20,7 +20,6 @@ std::string trim_right_slash(const std::string& s) {
     return out;
 }
 
-// html_escape mirrors Go's html/template HTMLEscapeString.
 std::string html_escape(const std::string& s) {
     std::string out;
     out.reserve(s.size());

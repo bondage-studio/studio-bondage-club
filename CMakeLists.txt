@@ -21,7 +21,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
-# Options
 option(SBC_EMBED_WEB     "Embed web/dist into the binary instead of reading from disk" OFF)
 option(SBC_BUILD_TESTS   "Build unit tests" ON)
 
@@ -46,7 +45,6 @@ elseif(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
-# Dependencies (provided by vcpkg toolchain)
 find_package(Boost REQUIRED COMPONENTS system url)
 # TLS + crypto backend: OpenSSL everywhere except Windows, where we use the
 # OS-native Schannel (via the header-only wintls wrapper) and CNG (bcrypt) so no
@@ -74,7 +72,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
-# Core library (everything except main.cpp, so tests can link it)
 file(GLOB_RECURSE SBC_CORE_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 list(REMOVE_ITEM SBC_CORE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
@@ -120,7 +117,6 @@ if(MSVC)
   target_compile_options(sbc_core PUBLIC /bigobj)
 endif()
 
-# Optional: embed web assets
 if(SBC_EMBED_WEB)
   include(cmake/EmbedWebAssets.cmake)
   embed_web_assets(sbc_core "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")

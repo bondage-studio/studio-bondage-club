@@ -90,7 +90,6 @@ export function loadGameServerStatus(): Promise<GameServerStatus & { enabled: bo
   return request<GameServerStatus & { enabled: boolean }>("/api/gameserver/status");
 }
 
-// ---- Userscripts -----------------------------------------------------------
 // A dedicated API (not a config scope): the Userscripts tab owns its own state
 // and persistence, decoupled from the form/scope machinery.
 
@@ -98,7 +97,6 @@ export function listUserscripts(): Promise<Userscript[]> {
   return request<Userscript[]>("/api/userscripts");
 }
 
-/** Upsert one script definition (the body carries its id). */
 export function saveUserscript(script: Userscript): Promise<Userscript> {
   return request<Userscript>("/api/userscripts", {
     method: "POST",
@@ -119,7 +117,6 @@ export function reorderUserscripts(ids: string[]): Promise<{ ok: boolean }> {
   });
 }
 
-/** Bulk-read a script's GM values: `{ key: value }`. */
 export function getUserscriptValues(id: string): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>(
     `/api/userscripts/values?script=${encodeURIComponent(id)}`
@@ -172,4 +169,3 @@ export function dismissUserscriptUpdate(id: string): Promise<{ ok: boolean }> {
     { method: "POST" }
   );
 }
-

@@ -10,7 +10,6 @@ import { errorMessage } from "../../lib/utils";
 import type { Userscript } from "../../types";
 
 interface Props {
-  /** Existing script when editing; undefined for a new/installed script. */
   initial?: Userscript;
   onSave: (script: Userscript) => Promise<void> | void;
   onClose: () => void;
@@ -128,7 +127,6 @@ export function UserscriptEditor({ initial, onSave, onClose }: Props) {
             />
           </div>
 
-          {/* Parsed-metadata review. */}
           <div className="rounded-md border bg-muted/40 p-2.5 text-xs">
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
               <span className="text-muted-foreground">Name</span>

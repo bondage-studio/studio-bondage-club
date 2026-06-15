@@ -20,21 +20,17 @@ class Socket;
 class SocketIoServer;
 }  // namespace socketio
 
-// ChatRoomManager ports the chat-room event handlers of the original BC server:
-// create / search / join / leave / chat / game / character-update, plus the
-// ChatRoomSync* broadcast family. Rooms live only in memory (GameState::rooms).
-// All state access is serialized by GameState::mu.
+// ChatRoomManager owns chat-room event handlers and ChatRoomSync* broadcasts.
+// Rooms live only in memory (GameState::rooms), and all state access is
+// serialized by GameState::mu.
 class ChatRoomManager {
 public:
     ChatRoomManager(socketio::SocketIoServer& hub, GameState& state, const GameSettings& settings);
 
-    // register_handlers installs the post-login chat-room handlers on a socket.
-    // Invoked from AccountManager's post-login hook.
     void register_handlers(std::shared_ptr<socketio::Socket> socket,
                            std::shared_ptr<OnlineAccount> acc);
 
-    // remove_from_room takes the account out of its current room (disconnect /
-    // explicit leave). Locks GameState internally.
+    // Used for disconnect / explicit leave. Locks GameState internally.
     void remove_from_room(std::shared_ptr<OnlineAccount> acc);
 
     std::size_t room_count();

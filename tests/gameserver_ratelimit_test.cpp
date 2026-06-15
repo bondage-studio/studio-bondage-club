@@ -51,7 +51,6 @@ std::string sid_of(const std::string& open_body) {
     return nlohmann::json::parse(open_body.substr(1)).at("sid").get<std::string>();
 }
 
-// Returns whether the Socket.IO CONNECT handler ran.
 asio::awaitable<bool> connect(sio::SocketIoServer& hub, const std::string& address, int& counter) {
     CapturingWriter hs;
     Request hs_req = req("GET", "EIO=4&transport=polling", {}, address);
@@ -94,8 +93,8 @@ SBC_TEST(rate_limit_rejects_rapid_connections_from_same_ip) {
     CHECK(done);
     CHECK(a1);
     CHECK(a2);
-    CHECK(!a3);    // third rapid connection from the same IP is rate-limited
-    CHECK(other);  // a distinct IP still connects
+    CHECK(!a3);
+    CHECK(other);
 }
 
 SBC_TEST(live_limits_loosen_the_ip_rate) {
@@ -127,5 +126,5 @@ SBC_TEST(live_limits_loosen_the_ip_rate) {
     CHECK(done);
     CHECK(a1);
     CHECK(a2);
-    CHECK(a3);  // with the loosened live limit the 3rd connection is accepted
+    CHECK(a3);
 }

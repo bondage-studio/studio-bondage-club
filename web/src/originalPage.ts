@@ -604,21 +604,16 @@ function appendDocumentHead(
   for (const child of Array.from(parsed.head.childNodes)) {
     const node = prepareNode(child, bootstrap, source, useServiceWorkerRoutes);
     if (node instanceof HTMLScriptElement && shouldDeferScript(node)) {
-      // Deferred/module scripts: insert at the end of body so they
-      // execute after the document has been parsed.
+      // Deferred/module scripts execute after the parsed body is inserted.
       scriptPromises.push(
         appendPreparedNode(document.body, node, document.getElementById(bootstrap.adminRootID))
       );
       continue;
     }
     if (node instanceof HTMLScriptElement) {
-      // Non-deferred scripts: insert now and track the load promise,
-      // but don't block the next element. The browser executes
-      // async=false scripts in insertion order.
+      // async=false scripts execute in insertion order without blocking parsing.
       scriptPromises.push(appendPreparedNode(document.head, node, null));
     } else {
-      // Non-script elements (stylesheets, meta, links): insert
-      // synchronously — no need for Promise overhead.
       document.head.appendChild(node);
     }
   }
@@ -635,11 +630,8 @@ function appendDocumentBody(
   for (const child of Array.from(parsed.body.childNodes)) {
     const node = prepareNode(child, bootstrap, source, useServiceWorkerRoutes);
     if (node instanceof HTMLScriptElement) {
-      // Track the load promise but don't block the next element.
-      // The browser executes async=false scripts in insertion order.
       scriptPromises.push(appendPreparedNode(document.body, node, adminRoot));
     } else {
-      // Non-script elements: insert synchronously.
       document.body.insertBefore(node, adminRoot);
     }
   }

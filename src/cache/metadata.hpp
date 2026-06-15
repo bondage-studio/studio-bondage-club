@@ -12,9 +12,8 @@ namespace sbc::cache {
 using Clock = std::chrono::system_clock;
 using TimePoint = Clock::time_point;
 
-// Metadata describes a cached response. Mirrors the Go httpcache.Metadata. The
-// body itself lives under the "b/<key>" LevelDB key; this is the "m/<key>" value
-// (serialized as JSON).
+// Metadata describes a cached response. The body itself lives under the
+// "b/<key>" LevelDB key; this is the "m/<key>" value (serialized as JSON).
 struct Metadata {
     std::string key;
     std::string url;
@@ -22,7 +21,7 @@ struct Metadata {
     HeaderMap header;
     TimePoint stored_at{};
     TimePoint last_accessed_at{};
-    std::optional<TimePoint> expires_at;  // nullopt -> never expires (Go zero time)
+    std::optional<TimePoint> expires_at;  // nullopt -> never expires
     std::int64_t body_size = 0;
     std::string body_sha256;
     std::string version;  // source version label ("" -> not version-tracked)

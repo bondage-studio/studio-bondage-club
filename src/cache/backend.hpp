@@ -36,11 +36,8 @@ class Writer {
 public:
     virtual ~Writer() = default;
     virtual void write(std::string_view data) = 0;
-    // commit finalizes the body into the store and returns the stored Metadata
-    // (with body_size/body_sha256 recomputed from the actual bytes).
+    // Recomputes body_size/body_sha256 from the streamed bytes.
     virtual Metadata commit(Metadata meta) = 0;
-    // keep_temp stops without committing and returns the temp path plus a guard
-    // that deletes it when released.
     virtual std::pair<std::filesystem::path, std::shared_ptr<TempFileGuard>> keep_temp() = 0;
     virtual void abort() = 0;
 };
@@ -53,12 +50,9 @@ public:
 
     virtual std::string name() const = 0;
 
-    // get returns the entry metadata, or nullopt on a miss.
     virtual std::optional<Metadata> get(const std::string& key) = 0;
-    // open_body returns the full stored body. Throws if absent.
     virtual std::string open_body(const std::string& key) = 0;
     virtual std::unique_ptr<Writer> new_writer(const std::string& key) = 0;
-    // update_metadata atomically read-transform-writes metadata. nullopt on miss.
     virtual std::optional<Metadata> update_metadata(
         const std::string& key, const std::function<Metadata(Metadata)>& fn) = 0;
     virtual void touch(const std::string& key, TimePoint now) = 0;
@@ -71,8 +65,7 @@ public:
     // Returns the number of entries affected.
     virtual int expire(const std::function<bool(const Metadata&)>& match, TimePoint when) = 0;
 
-    // versions returns the distinct version labels currently held and their entry
-    // counts (entries with an empty version are omitted), sorted by label.
+    // Distinct non-empty version labels and entry counts, sorted by label.
     virtual std::vector<std::pair<std::string, int>> versions() = 0;
 };
 

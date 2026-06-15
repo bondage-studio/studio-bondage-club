@@ -11,11 +11,9 @@
 
 namespace sbc::server::gameserver {
 
-// ChatRoom is an in-memory chat room, mirroring an entry of the original
-// server's `ChatRoom[]` array. Rooms are never persisted. `data` holds the room
-// properties (Name, Description, Background, Visibility, Access, Admin, Ban,
-// Whitelist, Limit, ...) and `accounts` is the ordered member list (the player
-// order the clients render).
+// ChatRoom is an in-memory chat room. `data` holds the room properties (Name,
+// Description, Background, Visibility, Access, Admin, Ban, Whitelist, Limit,
+// ...) and `accounts` is the ordered member list the clients render.
 struct ChatRoom {
     std::string id;  // base64-style room id; the socket.io room is "chatroom-"+id
     nlohmann::json data;

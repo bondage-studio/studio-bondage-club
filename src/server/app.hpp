@@ -23,10 +23,10 @@
 
 namespace sbc::server {
 
-// App is the top-level request router and lifecycle owner, the C++ analog of Go
-// server.App. It holds the active config + provider behind a snapshot and serves
-// /api, the homepage shell, static assets, socket.io, the remote loader, and
-// delegates everything else to the active provider.
+// App is the top-level request router and lifecycle owner. It holds the active
+// config + provider behind a snapshot and serves /api, the homepage shell,
+// static assets, socket.io, the remote loader, and delegates everything else to
+// the active provider.
 class App {
 public:
     App(config::Store& store, config::Config cfg, host::ProviderContext ctx);

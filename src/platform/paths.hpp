@@ -4,8 +4,8 @@
 
 namespace sbc::platform {
 
-// user_config_dir / user_cache_dir mirror Go's os.UserConfigDir /
-// os.UserCacheDir per-platform:
+// user_config_dir / user_cache_dir follow the platform user directory
+// conventions:
 //   macOS:   ~/Library/Application Support  and  ~/Library/Caches
 //   Linux:   $XDG_CONFIG_HOME|~/.config     and  $XDG_CACHE_HOME|~/.cache
 //   Windows: %AppData%                      and  %LocalAppData%

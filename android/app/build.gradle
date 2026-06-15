@@ -3,8 +3,6 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// The C++ server core, its CMake build, the vcpkg manifest + vendored vcpkg, and
-// the web frontend all live in the repo root (one level above this Gradle root).
 def repoRoot = rootDir.parentFile
 def webDir = new File(repoRoot, 'web')
 
@@ -33,13 +31,8 @@ android {
 
         externalNativeBuild {
             cmake {
-                // The shim toolchain picks the vcpkg android triplet from
-                // ANDROID_ABI and chainloads the NDK toolchain, so the manifest
-                // deps (Boost, OpenSSL, LevelDB, …) build for each ABI.
                 arguments += [
                     "-DCMAKE_TOOLCHAIN_FILE=${projectDir}/src/main/cpp/vcpkg-android-toolchain.cmake".toString(),
-                    // Our top-level CMake project is app/src/main/cpp, so point
-                    // vcpkg at the repo-root manifest explicitly.
                     "-DVCPKG_MANIFEST_DIR=${repoRoot}".toString(),
                     '-DANDROID_STL=c++_shared',
                     '-DSBC_EMBED_WEB=ON',
@@ -70,7 +63,6 @@ android {
 
     buildTypes {
         debug {
-            // Unsigned debug build (default debug signing config).
             applicationIdSuffix '.debug'
         }
         release {
@@ -92,9 +84,6 @@ android {
 }
 
 dependencies {
-    // The WebView host uses only the framework (android.app.Activity + WebView),
-    // so no AndroidX UI libraries are required. Kotlin stdlib is added by the
-    // Kotlin plugin automatically.
 }
 
 // Build the web frontend (web/dist) before the native build embeds it into the
@@ -117,9 +106,7 @@ tasks.register('buildWebAssets', Exec) {
     }
 }
 
-// web/dist must exist before CMake's configure step globs it for embedding.
-// Gate both preBuild and the externalNativeBuild configure/build tasks (whose
-// names contain "CMake") on the web build.
+// CMake globs web/dist during configure, so web assets must exist first.
 tasks.matching { it.name == 'preBuild' }.configureEach {
     dependsOn 'buildWebAssets'
 }

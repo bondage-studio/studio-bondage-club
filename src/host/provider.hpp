@@ -42,9 +42,8 @@ struct HomepageDocument {
     std::string cache_status;
 };
 
-// Provider is the active serving backend (reverse-proxy or package mode), the
-// C++ analog of Go's host.Provider. Capability mix-ins below are queried via
-// dynamic_cast, mirroring Go's interface assertions.
+// Provider is the active serving backend (reverse-proxy or package mode).
+// Capability mix-ins below are queried via dynamic_cast.
 class Provider {
 public:
     virtual ~Provider() = default;

@@ -52,8 +52,8 @@ bool iequals(std::string_view a, std::string_view b) {
     return true;
 }
 
-// Hop-by-hop set used by the reverse proxy (matches Go reverseproxy: includes
-// Upgrade, excludes Proxy-Connection).
+// Hop-by-hop set stripped by the reverse proxy. Includes Upgrade, excludes
+// Proxy-Connection.
 bool rp_hop(std::string_view key) {
     static const std::array hop = {
         "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -106,7 +106,6 @@ std::string read_whole_file(const fs::path& path) {
     return ss.str();
 }
 
-// WriterSink streams the upstream body into a cache temp file (sync writes).
 class WriterSink : public net::BodySink {
 public:
     explicit WriterSink(cache::Writer* writer) : writer_(writer) {}
@@ -119,7 +118,6 @@ private:
     cache::Writer* writer_;
 };
 
-// ResponseWriterSink streams the upstream body straight to the client.
 class ResponseWriterSink : public net::BodySink {
 public:
     ResponseWriterSink(server::ResponseWriter* w, bool skip) : w_(w), skip_(skip) {}
@@ -162,7 +160,7 @@ std::shared_ptr<Provider> Provider::create(const config::Config& cfg,
     p->cache_dir_ = cfg.cache.dir;
     open_stores(cfg, p->stores_);
     p->router_ = std::make_shared<cache::PolicyRouter>(cfg.cache.rules);
-    p->snap_ = p->build_snapshot(cfg);  // throws on invalid upstream
+    p->snap_ = p->build_snapshot(cfg);
     return p;
 }
 

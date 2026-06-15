@@ -16,8 +16,7 @@ using namespace sbc;
 
 namespace {
 
-// parse_config_flag extracts -config/--config <path> from argv (the only flag,
-// mirroring the Go CLI).
+// parse_config_flag extracts -config/--config <path> from argv.
 std::string parse_config_flag(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
     for (std::size_t i = 0; i < args.size(); ++i) {

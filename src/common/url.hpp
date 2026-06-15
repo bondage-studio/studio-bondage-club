@@ -7,24 +7,20 @@
 
 namespace sbc {
 
-// Url is a thin value wrapper over Boost.URL providing the subset of net/url
-// behaviour the proxy relies on. It centralizes URL handling so platform/test
-// concerns stay in one place.
+// Url is a thin value wrapper over Boost.URL providing the URL behavior the
+// proxy relies on. It centralizes URL handling so platform/test concerns stay in
+// one place.
 class Url {
 public:
     Url() = default;
 
-    // parse parses an absolute or relative URL. Throws sbc::Error on failure.
     static Url parse(std::string_view raw);
-    // try_parse returns nullopt instead of throwing.
     static std::optional<Url> try_parse(std::string_view raw);
 
-    // resolve resolves a (possibly relative) reference against a base URL,
-    // mirroring Go's (*url.URL).ResolveReference / net/http reverse proxying.
     static Url resolve(const Url& base, std::string_view reference);
 
     std::string scheme() const;        // "http" / "https" / "socks5" ...
-    std::string host() const;          // hostname without port (Go Hostname())
+    std::string host() const;          // hostname without port
     std::string user() const;          // decoded userinfo username ("" if none)
     std::string password() const;      // decoded userinfo password ("" if none)
     bool has_userinfo() const;
@@ -44,9 +40,7 @@ public:
     void clear_query_and_fragment();
     void ensure_trailing_slash();
 
-    // origin returns "<scheme>://<authority>" with no path/query/fragment.
     std::string origin() const;
-    // string returns the full serialized URL.
     std::string string() const;
 
 private:

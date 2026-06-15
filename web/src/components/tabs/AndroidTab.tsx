@@ -1,8 +1,6 @@
 import { Panel } from "../shared/Panel";
 
-// Android-only tab. Only built into the Android bundle (gated by androidOnly in
-// App.tsx -> IS_ANDROID_BUILD). Scaffold for native-app-specific controls; wire
-// real settings here as they appear.
+// Android-only tab. Only built into the Android bundle.
 export function AndroidTab() {
   return (
     <div className="grid max-w-2xl gap-3">

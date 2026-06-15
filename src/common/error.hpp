@@ -7,8 +7,8 @@
 namespace sbc {
 
 // Error is the base type for all recoverable, message-carrying failures. The
-// message is surfaced to the React panel verbatim (mirroring the Go error
-// strings), so keep messages stable and human-readable.
+// message is surfaced to the React panel verbatim, so keep messages stable and
+// human-readable.
 class Error : public std::runtime_error {
 public:
     explicit Error(const std::string& message) : std::runtime_error(message) {}

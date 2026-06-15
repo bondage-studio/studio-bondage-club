@@ -28,8 +28,7 @@ namespace eio = engineio;
 namespace {
 
 // rebuild_request reconstructs a Beast request from the internal Request so the
-// WebSocket handshake can be completed on the hijacked socket (mirrors the helper
-// in websocket_proxy.cpp).
+// WebSocket handshake can be completed on the hijacked socket.
 http::request<http::empty_body> rebuild_request(const Request& req) {
     http::request<http::empty_body> out;
     out.method(http::verb::get);
@@ -63,8 +62,7 @@ asio::awaitable<void> respond(ResponseWriter& w, int status, std::string body) {
     co_await w.write_full(status, std::move(h), std::move(body));
 }
 
-// client_address mirrors socket.conn.remoteAddress + the trusted x-forwarded-for
-// last hop used by the original server.
+// Prefer the trusted X-Forwarded-For last hop; fall back to the peer address.
 std::string client_address(const Request& req) {
     std::string xff = req.headers.get("X-Forwarded-For");
     if (!xff.empty()) {
@@ -147,7 +145,7 @@ asio::awaitable<void> SocketIoServer::handle_handshake(Request& req, ResponseWri
     conn->start();
     TransportLimits lim = limits();
     eio::HandshakeConfig cfg;
-    cfg.sid = sid;  // upgrades defaults to {"websocket"}
+    cfg.sid = sid;
     cfg.ping_interval = lim.ping_interval_ms;
     cfg.ping_timeout = lim.ping_timeout_ms;
     cfg.max_payload = lim.max_payload_bytes;
@@ -228,7 +226,7 @@ void SocketIoServer::release_ip_connection(const std::string& address) {
     if (it->second.size() <= 1)
         ip_connections_.erase(it);
     else
-        it->second.pop_front();  // drop the oldest, like the original server
+        it->second.pop_front();
 }
 
 void SocketIoServer::remove(const std::string& sid) {

@@ -11,8 +11,7 @@
 
 namespace sbc::host::packagehost {
 
-// Provider is a placeholder for the future package/plugin cache mode. It reports
-// a single disabled capability and returns 501 for all serving.
+// Provider reports package mode as unavailable and returns 501 for all serving.
 class Provider : public host::Provider {
 public:
     static std::shared_ptr<Provider> create(const config::Config& cfg,

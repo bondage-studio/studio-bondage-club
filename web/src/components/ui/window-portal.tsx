@@ -3,21 +3,14 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export interface WindowPortalProps {
-  /** Text for the native window's document.title. */
   documentTitle?: string;
-  /** CSS to inject into the new window's <head> (e.g. the shadow root's styles). */
   styleText?: string;
   width?: number;
   height?: number;
-  /** Called when the popped-out window is closed (by the user or programmatically). */
   onClose?: () => void;
   children: ReactNode;
 }
 
-/**
- * Renders its children into a genuine separate browser window opened via
- * `window.open`. Same-origin, so the configuration API stays reachable.
- */
 export function WindowPortal({
   documentTitle = "Configuration",
   styleText = "",

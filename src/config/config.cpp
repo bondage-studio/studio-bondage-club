@@ -35,13 +35,8 @@ std::string ServerConfig::address() const {
 
 namespace {
 
-// default_cache_stores / default_cache_rules seed a fresh install with caching
-// that actually works out of the box. Desktop users could previously copy a
-// tuned config.json, but a packaged host (notably Android) only ever gets the
-// generated default config, so an empty rule set meant nothing got cached. These
-// mirror run/config.json: separate "echo" / "mpa" stores for the content-
-// addressed add-ons and an "assets" store for the game body, keyed by the
-// game's R-number and revalidated across releases.
+// Default cache routing: content-addressed add-ons use separate stores; the game
+// body is keyed by R-number and revalidated across releases.
 std::vector<StoreConfig> default_cache_stores() {
     std::vector<StoreConfig> stores;
     for (const char* name : {"assets", "echo", "mpa"}) {
@@ -290,7 +285,7 @@ Config normalize(Config c) {
     return c;
 }
 
-// JSON (de)serialization uses camelCase keys and omits empty values to match Go.
+// JSON (de)serialization uses camelCase keys and omits empty values.
 
 void to_json(ordered_json& j, const ServerConfig& s) {
     j = ordered_json::object();
@@ -351,8 +346,8 @@ void from_json(const ordered_json& j, PackageConfig& p) {
 }
 
 void to_json(ordered_json& j, const GameServerConfig& g) {
-    // Emit every field (unlike the omitempty structs) so the admin panel always
-    // has concrete values to render and edit.
+    // Emit every field so the admin panel always has concrete values to render
+    // and edit.
     j = ordered_json::object();
     j["pingIntervalMs"] = g.ping_interval_ms;
     j["pingTimeoutMs"] = g.ping_timeout_ms;
@@ -425,7 +420,7 @@ void to_json(ordered_json& j, const Config& c) {
 
 void from_json(const ordered_json& j, Config& c) {
     // Merge into the existing (default-initialized) structs so absent keys keep
-    // their defaults, matching Go's json.Unmarshal-into-existing behaviour.
+    // their defaults.
     if (auto it = j.find("server"); it != j.end()) from_json(*it, c.server);
     if (auto it = j.find("mode"); it != j.end()) c.mode = it->get<std::string>();
     if (auto it = j.find("upstream"); it != j.end()) c.upstream = it->get<std::string>();

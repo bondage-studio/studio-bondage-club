@@ -10,8 +10,8 @@ struct Mail {
     std::string body;
 };
 
-// Mailer abstracts outbound email. The original BC server uses nodemailer for
-// password-reset codes; locally we default to a logging no-op.
+// Mailer abstracts outbound password-reset email. The local default logs instead
+// of sending.
 class Mailer {
 public:
     virtual ~Mailer() = default;

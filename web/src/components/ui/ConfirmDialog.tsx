@@ -5,22 +5,14 @@ import { Window } from "./window";
 
 export interface ConfirmDialogProps {
   title?: string;
-  /** Main body content (string or rich nodes). */
   body?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** Style the confirm button as a destructive action. */
   destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-/**
- * A non-blocking confirmation dialog styled like the rest of the config panel.
- * Unlike `window.confirm`, it never freezes the page and works inside the shadow
- * DOM / popped-out windows / Electron. It's a pure presentational component;
- * drive it imperatively through `useConfirm()` (see `confirm.tsx`).
- */
 export function ConfirmDialog({
   title = "Are you sure?",
   body,

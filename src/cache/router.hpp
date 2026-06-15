@@ -16,7 +16,7 @@ namespace sbc::cache {
 
 // CacheRule describes one policy-routing rule. All non-empty conditions must
 // match for the rule to apply; rules are evaluated in order, first match wins.
-// JSON keys mirror the Go struct so existing config.json files stay compatible.
+// JSON keys keep the existing config.json schema stable.
 struct CacheRule {
     std::string host;
     std::string path_prefix;
@@ -25,7 +25,7 @@ struct CacheRule {
     std::string store;                  // "" -> "default"
     bool bypass = false;
     std::optional<int> ttl_seconds;     // override TTL; nullopt -> store default
-    std::string key_mode;               // "" | "url" (default) | "path"
+    std::string key_mode;
     std::string cache_control;
     bool force_cache = false;           // cache even when upstream says no-store
 
@@ -50,13 +50,12 @@ struct CacheRule {
     bool version_revalidate = false;
 };
 
-// RouteAction is the resolved policy for a single request URL.
 struct RouteAction {
     bool bypass = false;
     std::string store_name;                  // "" means "default"
     std::chrono::seconds ttl{0};             // 0 means use the store's default
     std::string key_mode;                    // "path" uses upstream-relative path
-    std::string cache_control;               // non-empty overrides response header
+    std::string cache_control;
     bool force_cache = false;                // bypass ResponseCacheable checks
     std::string version;
     std::string key_pattern;
@@ -64,8 +63,7 @@ struct RouteAction {
     bool version_revalidate = false;         // version = freshness signal vs key part
 };
 
-// glob_match matches a Go path.Match-style glob (*, ?, [set]) where '*' does not
-// cross '/'. Returns false on malformed patterns (caller validates separately).
+// Path-style glob (*, ?, [set]); '*' does not cross '/'.
 bool glob_match(const std::string& pattern, const std::string& text);
 
 // PolicyRouter evaluates an ordered CacheRule list to produce a RouteAction.
@@ -73,21 +71,18 @@ bool glob_match(const std::string& pattern, const std::string& text);
 class PolicyRouter {
 public:
     PolicyRouter() = default;
-    // Throws sbc::Error if any path_pattern is an invalid regex/glob.
     explicit PolicyRouter(const std::vector<CacheRule>& rules);
 
     std::vector<CacheRule> rules() const;
-    // Atomically replaces the rule set. Throws on invalid pattern.
     void update(const std::vector<CacheRule>& rules);
 
-    // match returns the first matching action; default-constructed if none.
     RouteAction match(const Url& target, const Url& base) const;
 
 private:
     struct CompiledRule {
         CacheRule rule;
-        std::optional<std::regex> path_re;  // set when path_pattern starts with "re:"
-        std::string path_glob;              // set when path_pattern is a glob
+        std::optional<std::regex> path_re;
+        std::string path_glob;
     };
 
     static std::shared_ptr<const std::vector<CompiledRule>> compile(

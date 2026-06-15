@@ -22,8 +22,7 @@ enum class PacketType : char {
 // Record separator that joins multiple packets in a single HTTP long-poll body.
 inline constexpr char kRecordSeparator = '\x1e';
 
-// Default Engine.IO handshake timing. These mirror the original BC server
-// (docs/Bondage-Club-Server/app.js) so the unmodified client behaves identically.
+// Default Engine.IO handshake timing expected by the unmodified game client.
 inline constexpr int kPingInterval = 50000;
 inline constexpr int kPingTimeout = 30000;
 inline constexpr int kMaxPayload = 180000;
@@ -36,7 +35,6 @@ struct Packet {
     std::string encode() const;
 };
 
-// message wraps a Socket.IO payload as an Engine.IO MESSAGE packet ("4"+payload).
 std::string message(std::string_view payload);
 
 // parse_packet decodes one wire-form packet (type digit + data). Returns

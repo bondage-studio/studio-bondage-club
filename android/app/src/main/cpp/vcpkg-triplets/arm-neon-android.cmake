@@ -1,5 +1,4 @@
-# Overlay triplet: builtin arm-neon-android with the Android API level pinned to
-# 24 to match app/build.gradle minSdk. See arm64-android.cmake for the rationale.
+# Pin dependencies to minSdk 24; see arm64-android.cmake for the link rationale.
 set(VCPKG_TARGET_ARCHITECTURE arm)
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)

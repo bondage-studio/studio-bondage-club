@@ -49,7 +49,7 @@ function gmXmlHttpRequest(details: GmXhrDetails): { abort: () => void } {
       try {
         xhr.setRequestHeader(k, v);
       } catch {
-        // ignore forbidden header
+        // ignored
       }
     }
   }
@@ -119,7 +119,7 @@ function gmOpenInTab(url: string, options?: { active?: boolean } | boolean) {
       win.blur();
       window.focus();
     } catch {
-      // ignore
+      // best-effort
     }
   }
   return {

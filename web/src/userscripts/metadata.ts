@@ -33,7 +33,6 @@ export interface UserscriptMetadata {
 
 const BLOCK_RE = /\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/;
 
-/** Map a raw @run-at value to one of our three injection phases. */
 function normalizeRunAt(raw: string): RunAt {
   switch (raw) {
     case "document-start":
@@ -141,7 +140,7 @@ export function parseMetadata(source: string): UserscriptMetadata {
  * Convert an absolute http(s) URL into the local `/<absolute-url>` proxy path so
  * cross-origin fetches (GM_xmlhttpRequest, @require, @resource, install-from-URL)
  * route through the existing remote loader. Same-origin and non-http(s) URLs are
- * returned unchanged. Mirrors originalPage.ts `toLocalProxyURL`.
+ * returned unchanged.
  */
 export function toProxyURL(rawUrl: string): string {
   let url: URL;

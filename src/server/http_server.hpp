@@ -16,8 +16,8 @@ class IoRuntime;
 
 namespace sbc::server {
 
-// ConnectionStats tracks live connection counts, mirroring net/http's ConnState
-// callback. Shared (by reference) with every Session.
+// ConnectionStats tracks live connection counts. Shared (by reference) with
+// every Session.
 struct ConnectionStats {
     std::atomic<std::int64_t> accepted{0};
     std::atomic<std::int64_t> active{0};   // currently open connections

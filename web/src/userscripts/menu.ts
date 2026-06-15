@@ -55,7 +55,6 @@ export function unregisterMenuCommand(id: string): void {
   if (reg.commands.delete(id)) emitChange();
 }
 
-/** Remove every command registered by a script (used when it is removed/reset). */
 export function clearScriptMenuCommands(scriptId: string): void {
   const reg = getMenuRegistry();
   let changed = false;
@@ -72,7 +71,6 @@ export function listMenuCommands(): MenuCommand[] {
   return [...getMenuRegistry().commands.values()];
 }
 
-/** Subscribe to registry changes; returns an unsubscribe function. */
 export function onMenuChange(listener: () => void): () => void {
   const reg = getMenuRegistry();
   reg.events.addEventListener("change", listener);

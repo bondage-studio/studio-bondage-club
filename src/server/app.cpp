@@ -31,10 +31,10 @@ using nlohmann::ordered_json;
 
 namespace {
 
-constexpr std::size_t kMaxConfigBody = 1u << 20;  // 1 MiB, matches Go MaxBytesReader
+constexpr std::size_t kMaxConfigBody = 1u << 20;  // 1 MiB
 
-// CommonHeaderWriter injects the per-response common headers (CORS,
-// X-Studio-Local-Host) into every response, mirroring Go's addCommonHeaders.
+// CommonHeaderWriter injects the shared response headers (CORS,
+// X-Studio-Local-Host) without overwriting handler-provided values.
 class CommonHeaderWriter : public ResponseWriter {
 public:
     CommonHeaderWriter(ResponseWriter& inner, HeaderMap common)
@@ -287,8 +287,8 @@ asio::awaitable<void> App::serve(Request& req, ResponseWriter& raw) {
                                    ctx_.io->executor());
         co_return;
     }
-    // Legacy/fallback: an unprefixed /socket.io/ (e.g. if the io wrapper failed to
-    // install) is routed by the server-side default flag.
+    // Fallback for an unprefixed /socket.io/ request if the frontend wrapper is
+    // not installed.
     if (req.path.rfind("/socket.io/", 0) == 0) {
         if (cfg.local_game_server) {
             co_await serve_game_socket_local(req, w, game_->hub(), ctx_.io->executor());
@@ -456,8 +456,7 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
     auto& bp = *ctx_.blocking;
     auto store = userscripts_;
 
-    // Helper: turn a plain json (alpha-ordered) into the ordered_json write_json
-    // expects. Payloads here are small, so the dump/parse round-trip is cheap.
+    // Payloads here are small, so the dump/parse round-trip is cheap.
     auto as_ordered = [](const nlohmann::json& j) { return ordered_json::parse(j.dump()); };
 
     if (path == "/api/userscripts") {
@@ -761,7 +760,7 @@ asio::awaitable<void> App::handle_put_config(Request& req, ResponseWriter& w) {
         co_return;
     }
 
-    // Aggregate tier for the legacy whole-config response = the strongest tier.
+    // Whole-config responses report the strongest changed-scope tier.
     UpdateTier tier = UpdateTier::Live;
     for (const auto& [name, t] : changed)
         if (static_cast<int>(t) > static_cast<int>(tier)) tier = t;
@@ -811,7 +810,7 @@ asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter&
         co_return;
     }
 
-    // Cache-dir migration is opt-in via ?migrate=true (only meaningful for cache).
+    // Data-directory migration is opt-in via ?migrate=true.
     const bool migrate = req.raw_query.find("migrate=true") != std::string::npos;
 
     std::map<std::string, UpdateTier> changed;
@@ -839,11 +838,8 @@ asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter&
     co_await write_json(w, 200, resp);
 }
 
-// Restore the whole config to default_config() (the same shape a fresh install
-// generates) and persist + hot-apply it. The directory fields are regenerated
-// from the platform paths in force on this process, so the reset keeps using the
-// same cache/config locations. Live scopes apply immediately; a listener-address
-// change is reported via restartRequired so the host can restart to rebind.
+// Restore the whole config to default_config(), persist it, and hot-apply what
+// can change live. A listener-address change is reported via restartRequired.
 asio::awaitable<void> App::handle_reset_config(ResponseWriter& w) {
     config::Config def = config::normalize(config::default_config());
 

@@ -13,8 +13,6 @@ std::filesystem::path env_or(const char* var, std::filesystem::path fallback) {
 
 }  // namespace
 
-// Windows: %AppData% (roaming) for config, %LocalAppData% for cache, matching
-// Go's os.UserConfigDir / os.UserCacheDir.
 std::filesystem::path user_config_dir() { return env_or("APPDATA", "."); }
 std::filesystem::path user_cache_dir() { return env_or("LOCALAPPDATA", "."); }
 

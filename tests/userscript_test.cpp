@@ -37,8 +37,6 @@ json sample_script(const std::string& id, int sort_order = 0) {
 
 }  // namespace
 
-// ---- metadata parsing + version comparison ---------------------------------
-
 SBC_TEST(userscript_metadata_parse_version) {
     std::string src =
         "// ==UserScript==\n"
@@ -63,15 +61,13 @@ SBC_TEST(userscript_version_compare) {
     CHECK(version_newer("1.0.1", "1.0.0"));
     CHECK(version_newer("1.1.0", "1.0.9"));
     CHECK(version_newer("2.0.0", "1.9.9"));
-    CHECK(version_newer("1.0.0", ""));        // any version beats none
-    CHECK(version_newer("1.0.10", "1.0.9"));  // numeric, not lexical
-    CHECK(!version_newer("1.0.0", "1.0.0"));  // equal
-    CHECK(!version_newer("1.0.0", "1.0.1"));  // older
-    CHECK(!version_newer("", "1.0.0"));       // empty candidate
+    CHECK(version_newer("1.0.0", ""));
+    CHECK(version_newer("1.0.10", "1.0.9"));
+    CHECK(!version_newer("1.0.0", "1.0.0"));
+    CHECK(!version_newer("1.0.0", "1.0.1"));
+    CHECK(!version_newer("", "1.0.0"));
     CHECK(!version_newer("", ""));
 }
-
-// ---- store round-trips -----------------------------------------------------
 
 SBC_TEST(userscript_store_put_get_list) {
     auto dir = make_temp_dir("scripts");
@@ -90,7 +86,6 @@ SBC_TEST(userscript_store_put_get_list) {
 
     auto all = store->list();
     CHECK(all.size() == 3);
-    // sorted by sortOrder
     CHECK(all[0].value("id", "") == "a");
     CHECK(all[1].value("id", "") == "b");
     CHECK(all[2].value("id", "") == "c");
@@ -154,7 +149,7 @@ SBC_TEST(userscript_store_remove_clears_ranges) {
 SBC_TEST(userscript_store_pending_and_apply) {
     auto dir = make_temp_dir("pending");
     auto store = UserscriptStore::open(dir.string());
-    store->put(sample_script("a"));  // version 1.0.0
+    store->put(sample_script("a"));
 
     CHECK(!store->get_pending("a").has_value());
     json pending = {{"version", "2.0.0"}, {"source", "// new source v2"}, {"fetchedAt", 123456}};
@@ -164,7 +159,6 @@ SBC_TEST(userscript_store_pending_and_apply) {
     CHECK(got.has_value());
     CHECK(got->value("version", "") == "2.0.0");
 
-    // apply promotes source + version into the definition and clears pending.
     auto updated = store->apply_pending("a");
     CHECK(updated.has_value());
     CHECK(updated->value("version", "") == "2.0.0");
@@ -180,7 +174,7 @@ SBC_TEST(userscript_store_apply_without_pending) {
     auto dir = make_temp_dir("apply-none");
     auto store = UserscriptStore::open(dir.string());
     store->put(sample_script("a"));
-    CHECK(!store->apply_pending("a").has_value());  // no pending -> nullopt
+    CHECK(!store->apply_pending("a").has_value());
     CHECK(!store->apply_pending("missing").has_value());
 }
 
@@ -203,7 +197,6 @@ SBC_TEST(userscript_store_ensure_builtin) {
     spec["builtin"] = true;
     spec["enabled"] = false;
 
-    // First call seeds it.
     store->ensure_builtin(spec);
     auto got = store->get("builtin-x");
     CHECK(got.has_value());
@@ -216,7 +209,7 @@ SBC_TEST(userscript_store_ensure_builtin) {
     edited["source"] = "// user edited";
     store->put(edited);
 
-    store->ensure_builtin(spec);  // id already present -> no-op
+    store->ensure_builtin(spec);
     auto after = store->get("builtin-x");
     CHECK(after->value("enabled", false));
     CHECK(after->value("source", "") == "// user edited");
@@ -226,12 +219,10 @@ SBC_TEST(userscript_store_settings_persist) {
     auto dir = make_temp_dir("settings");
     {
         auto store = UserscriptStore::open(dir.string());
-        // default before any write
         CHECK(store->get_settings().value("updateIntervalHours", -1) == 6);
         store->set_settings(json{{"updateIntervalHours", 12}});
     }
     {
-        // reopen the DB and re-read
         auto store = UserscriptStore::open(dir.string());
         CHECK(store->get_settings().value("updateIntervalHours", -1) == 12);
     }

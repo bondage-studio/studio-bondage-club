@@ -1,15 +1,11 @@
-# Top-level CMake project for the Android native build. Gradle's
-# externalNativeBuild invokes this once per ABI with the NDK toolchain (vcpkg is
-# chainloaded onto it from app/build.gradle). It pulls in the full server core
-# from the repo and wraps it in the JNI shared library the app loads.
+# Gradle invokes this once per ABI. It builds the shared JNI wrapper around the
+# server core.
 cmake_minimum_required(VERSION 3.21)
 project(sbc_android CXX)
 
-# cpp -> main -> src -> app -> android -> <repo root>
 get_filename_component(SBC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
 
-# Force the server core's build options for Android: embed web/dist into the .so
-# (no on-device asset files) and skip the host-only test target.
+# Android embeds web/dist into the .so and has no host test runner.
 set(SBC_EMBED_WEB ON CACHE BOOL "" FORCE)
 set(SBC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
