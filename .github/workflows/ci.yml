@@ -244,7 +244,8 @@ jobs:
           path: web/dist
 
   # Android app: embeds the server core (built per-ABI via vcpkg + NDK) and the
-  # web panel into a WebView APK.
+  # web panel. Two engine flavors are built: `system` (device WebView) and
+  # `gecko` (bundled GeckoView).
   android:
     name: Android APK
     runs-on: ubuntu-latest
@@ -297,7 +298,9 @@ jobs:
         shell: bash
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
 
-      - name: Build release APK (arm64-v8a)
+      # Builds both engine flavors (assembleRelease covers every flavor of the
+      # release build type): system (device WebView) and gecko (bundled GeckoView).
+      - name: Build release APKs (arm64-v8a)
         working-directory: android
         env:
           SBC_KEYSTORE_FILE: ${{ env.SIGN_APK == 'true' && format('{0}/release.keystore', runner.temp) || '' }}
@@ -306,9 +309,16 @@ jobs:
           SBC_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon -PsbcAbi=arm64-v8a
 
-      - name: Upload APK
+      - name: Upload system-WebView APK
         uses: actions/upload-artifact@v4
         with:
-          name: studio-bondage-club-android-arm64
-          path: android/app/build/outputs/apk/release/*.apk
+          name: studio-bondage-club-android-system-arm64
+          path: android/app/build/outputs/apk/system/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload GeckoView APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-bondage-club-android-gecko-arm64
+          path: android/app/build/outputs/apk/gecko/release/*.apk
           if-no-files-found: error
