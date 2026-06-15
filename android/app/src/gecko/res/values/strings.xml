@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Overrides the main app_name so the bundled-browser build is
+         distinguishable from the system-WebView build on the launcher. -->
+    <string name="app_name">Studio Bondage Club (Browser)</string>
+</resources>

@@ -11,6 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // GeckoView (the bundled-browser 'gecko' flavor) is published here.
+        maven { url 'https://maven.mozilla.org/maven2/' }
     }
 }
 

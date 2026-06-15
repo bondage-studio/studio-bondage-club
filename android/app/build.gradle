@@ -61,6 +61,23 @@ android {
         }
     }
 
+    // Two engines: `system` hosts the game in the device's WebView (small APK,
+    // but breaks on stale System WebView); `gecko` bundles its own Firefox
+    // engine (GeckoView) so rendering is independent of the device. The two use
+    // distinct applicationIds so they install side-by-side.
+    flavorDimensions += 'engine'
+    productFlavors {
+        system {
+            dimension 'engine'
+            // No applicationId suffix: keeps the original id and existing installs.
+        }
+        gecko {
+            dimension 'engine'
+            applicationIdSuffix '.gecko'
+            versionNameSuffix '-gecko'
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix '.debug'
@@ -84,6 +101,15 @@ android {
 }
 
 dependencies {
+    // Bundled Firefox engine — only linked into the `gecko` flavor. The `system`
+    // flavor uses android.webkit.WebView and pulls in nothing extra.
+    //
+    // Pinned to 133 (the last GeckoView on androidx.core 1.13.1): newer releases
+    // transitively require androidx.core >= 1.15 / media3, which force compileSdk
+    // 35+ and AGP 8.9+. Staying on 133 keeps the deliberately pinned toolchain
+    // (compileSdk 34, AGP 8.5.2, NDK) untouched while still shipping a modern
+    // engine. Bump together with compileSdk/AGP when those are raised.
+    geckoImplementation 'org.mozilla.geckoview:geckoview:133.0.20241209150345'
 }
 
 // Build the web frontend (web/dist) before the native build embeds it into the
