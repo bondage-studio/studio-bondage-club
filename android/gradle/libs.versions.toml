@@ -1,0 +1,11 @@
+[versions]
+agp = "9.2.1"
+geckoview = "151.0.20260608154138"
+kotlin = "2.4.0"
+
+[libraries]
+geckoview = { group = "org.mozilla.geckoview", name = "geckoview", version.ref = "geckoview" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

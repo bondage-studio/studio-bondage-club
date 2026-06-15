@@ -1,6 +1,5 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    alias libs.plugins.android.application
 }
 
 def repoRoot = rootDir.parentFile
@@ -8,7 +7,7 @@ def webDir = new File(repoRoot, 'web')
 
 android {
     namespace 'com.studio.bondageclub'
-    compileSdk 36
+    compileSdk 37
 
     // Pin the NDK so the vcpkg android triplets + C++20 build are reproducible.
     ndkVersion '30.0.14904198'
@@ -98,15 +97,16 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = '17'
-    }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
     // Bundled Firefox engine — only linked into the `gecko` flavor. The `system`
     // flavor uses android.webkit.WebView and pulls in nothing extra.
-    geckoImplementation 'org.mozilla.geckoview:geckoview:151.0.20260608154138'
+    geckoImplementation libs.geckoview
 }
 
 // Build the web frontend (web/dist) before the native build embeds it into the
