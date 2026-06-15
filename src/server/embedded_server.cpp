@@ -37,8 +37,7 @@ EmbeddedServer::~EmbeddedServer() {
     }
 }
 
-std::string EmbeddedServer::start(const std::string& config_path,
-                                  const std::string& host_override,
+std::string EmbeddedServer::start(const std::string& config_path, const std::string& host_override,
                                   std::uint16_t port_override) {
     config::Store store = config::Store::open(config_path);
     config::Config cfg = store.load();
@@ -58,9 +57,9 @@ std::string EmbeddedServer::start(const std::string& config_path,
     ctx.tls = &impl->tls;
 
     impl->app = std::make_unique<App>(impl->store, cfg, ctx);
-    impl->http_server = std::make_unique<HttpServer>(
-        impl->runtime, cfg.server.host, static_cast<std::uint16_t>(cfg.server.port),
-        impl->app->handler());
+    impl->http_server = std::make_unique<HttpServer>(impl->runtime, cfg.server.host,
+                                                     static_cast<std::uint16_t>(cfg.server.port),
+                                                     impl->app->handler());
     impl->http_server->start();
 
     std::string address = impl->http_server->address();

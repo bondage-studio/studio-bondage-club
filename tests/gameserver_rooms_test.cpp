@@ -35,7 +35,9 @@ public:
     }
     asio::awaitable<void> write_chunk(std::string_view) override { co_return; }
     asio::awaitable<void> finish() override { co_return; }
-    sbc::net::HijackedConnection hijack() override { throw std::runtime_error("no hijack in test"); }
+    sbc::net::HijackedConnection hijack() override {
+        throw std::runtime_error("no hijack in test");
+    }
 };
 
 Request make_req(const std::string& method, const std::string& query, std::string body = {},

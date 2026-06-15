@@ -66,7 +66,7 @@ export function parseMetadata(source: string): UserscriptMetadata {
     include: [],
     exclude: [],
     runAt: "document-idle",
-    metaStr: ""
+    metaStr: "",
   };
 
   const block = BLOCK_RE.exec(source);
@@ -113,7 +113,8 @@ export function parseMetadata(source: string): UserscriptMetadata {
       case "resource": {
         // "@resource <name> <url>"
         const parts = value.split(/\s+/);
-        if (parts.length >= 2) meta.resource.push({ name: parts[0], url: parts.slice(1).join(" ") });
+        if (parts.length >= 2)
+          meta.resource.push({ name: parts[0], url: parts.slice(1).join(" ") });
         break;
       }
       case "match":

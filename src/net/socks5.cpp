@@ -87,15 +87,20 @@ asio::awaitable<tcp::socket> socks5_connect(asio::any_io_executor executor, Sock
     }
     std::size_t addr_len = 0;
     switch (head[3]) {
-        case 0x01: addr_len = 4; break;
-        case 0x04: addr_len = 16; break;
+        case 0x01:
+            addr_len = 4;
+            break;
+        case 0x04:
+            addr_len = 16;
+            break;
         case 0x03: {
             std::array<unsigned char, 1> len{};
             co_await asio::async_read(socket, asio::buffer(len), asio::use_awaitable);
             addr_len = len[0];
             break;
         }
-        default: throw Error("socks5: unknown address type in reply");
+        default:
+            throw Error("socks5: unknown address type in reply");
     }
     std::vector<unsigned char> rest(addr_len + 2);  // addr + port
     co_await asio::async_read(socket, asio::buffer(rest), asio::use_awaitable);

@@ -27,13 +27,7 @@ export function StoreEditor({ initial, onSave, onClose }: StoreEditorProps) {
   }
 
   return (
-    <Window
-      onClose={onClose}
-      defaultWidth={420}
-      defaultHeight={400}
-      minWidth={360}
-      minHeight={300}
-    >
+    <Window onClose={onClose} defaultWidth={420} defaultHeight={400} minWidth={360} minHeight={300}>
       <Window.Title>{isEdit ? "Edit store" : "Add store"}</Window.Title>
 
       <Window.Body className="overflow-y-auto p-4">

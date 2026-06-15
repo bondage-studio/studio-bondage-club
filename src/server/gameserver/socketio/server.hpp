@@ -74,8 +74,8 @@ public:
     void join_room(const std::string& room, const std::string& sid);
     void leave_room(const std::string& room, const std::string& sid);
 
-    void emit_to_room(const std::string& room, std::string_view event,
-                      const nlohmann::json& data, const std::string& except_sid = {});
+    void emit_to_room(const std::string& room, std::string_view event, const nlohmann::json& data,
+                      const std::string& except_sid = {});
     void emit_to_all(std::string_view event, const nlohmann::json& data);
 
     std::size_t online_count();

@@ -15,8 +15,8 @@ std::string query_param(const std::string& raw_query, const std::string& name) {
     std::size_t pos = 0;
     while (pos <= raw_query.size()) {
         std::size_t amp = raw_query.find('&', pos);
-        std::string pair = raw_query.substr(
-            pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        std::string pair =
+            raw_query.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
         std::size_t eq = pair.find('=');
         std::string key = eq == std::string::npos ? pair : pair.substr(0, eq);
         if (key == name) {

@@ -54,7 +54,8 @@ bool account_has_any_role(const OnlineAccount& acc, const ChatRoom& room, const 
     if (!roles.is_array()) return false;
     if (has_str(roles, "All")) return true;
     std::int64_t m = acc.member_number();
-    if (has_str(roles, "Admin") && has_member(room.data.value("Admin", json::array()), m)) return true;
+    if (has_str(roles, "Admin") && has_member(room.data.value("Admin", json::array()), m))
+        return true;
     if (has_str(roles, "Whitelist") && has_member(room.data.value("Whitelist", json::array()), m))
         return true;
     return false;
@@ -81,7 +82,8 @@ std::vector<std::int64_t> lover_numbers(const OnlineAccount& acc) {
     std::vector<std::int64_t> out;
     if (acc.data.contains("Lovership") && acc.data["Lovership"].is_array())
         for (const auto& l : acc.data["Lovership"])
-            if (l.is_object() && l.contains("MemberNumber") && l["MemberNumber"].is_number_integer())
+            if (l.is_object() && l.contains("MemberNumber") &&
+                l["MemberNumber"].is_number_integer())
                 out.push_back(l["MemberNumber"].get<std::int64_t>());
     return out;
 }
@@ -102,7 +104,8 @@ bool get_allow_item(const OnlineAccount& source, const OnlineAccount& target) {
 
     if (perm == 1 && !has_member(black, sm)) return true;
     if (perm == 2 && !has_member(black, sm) &&
-        (dominant_value(source) + 25 >= dominant_value(target) || has_member(white, sm) || is_lover))
+        (dominant_value(source) + 25 >= dominant_value(target) || has_member(white, sm) ||
+         is_lover))
         return true;
     if (perm == 3 && (has_member(white, sm) || is_lover)) return true;
     if (perm == 4 && is_lover) return true;
@@ -132,8 +135,7 @@ void ChatRoomManager::register_handlers(std::shared_ptr<socketio::Socket> socket
                [this, socket](const json& data) { chat_room_search(socket, data); });
     socket->on("ChatRoomCreate",
                [this, socket](const json& data) { chat_room_create(socket, data); });
-    socket->on("ChatRoomJoin",
-               [this, socket](const json& data) { chat_room_join(socket, data); });
+    socket->on("ChatRoomJoin", [this, socket](const json& data) { chat_room_join(socket, data); });
     socket->on("ChatRoomLeave", [this, id](const json&) { chat_room_leave(id); });
     socket->on("ChatRoomChat", [this, id](const json& data) { chat_room_chat(id, data); });
     socket->on("ChatRoomGame", [this, id](const json& data) { chat_room_game(id, data); });
@@ -161,12 +163,32 @@ std::shared_ptr<OnlineAccount> ChatRoomManager::account_for(const std::string& s
 
 nlohmann::json ChatRoomManager::char_shared_data(const OnlineAccount& acc, const ChatRoom& room) {
     json c = json::object();
-    for (const char* k :
-         {"ID", "Name", "AssetFamily", "Title", "Nickname", "Appearance", "ActivePose", "Reputation",
-          "Creation", "Lovership", "Description", "Owner", "MemberNumber", "LabelColor",
-          "ItemPermission", "InventoryData", "Ownership", "BlockItems", "LimitedItems",
-          "FavoriteItems", "ArousalSettings", "OnlineSharedSettings", "Game", "MapData", "Crafting",
-          "Difficulty"}) {
+    for (const char* k : {"ID",
+                          "Name",
+                          "AssetFamily",
+                          "Title",
+                          "Nickname",
+                          "Appearance",
+                          "ActivePose",
+                          "Reputation",
+                          "Creation",
+                          "Lovership",
+                          "Description",
+                          "Owner",
+                          "MemberNumber",
+                          "LabelColor",
+                          "ItemPermission",
+                          "InventoryData",
+                          "Ownership",
+                          "BlockItems",
+                          "LimitedItems",
+                          "FavoriteItems",
+                          "ArousalSettings",
+                          "OnlineSharedSettings",
+                          "Game",
+                          "MapData",
+                          "Crafting",
+                          "Difficulty"}) {
         copy_if_present(c, acc.data, k);
     }
     // WhiteList/BlackList filtered to members currently in the room.
@@ -195,9 +217,9 @@ nlohmann::json ChatRoomManager::room_data(const ChatRoom& room, std::int64_t sou
 
 nlohmann::json ChatRoomManager::room_properties(const ChatRoom& room, std::int64_t source_member) {
     json r = json::object();
-    for (const char* k : {"Name", "Language", "Description", "Admin", "Whitelist", "Ban", "Background",
-                          "Custom", "Limit", "Game", "Visibility", "Access", "Private", "Locked",
-                          "MapData", "BlockCategory", "Space"}) {
+    for (const char* k : {"Name", "Language", "Description", "Admin", "Whitelist", "Ban",
+                          "Background", "Custom", "Limit", "Game", "Visibility", "Access",
+                          "Private", "Locked", "MapData", "BlockCategory", "Space"}) {
         copy_if_present(r, room.data, k);
     }
     r["SourceMemberNumber"] = source_member;
@@ -246,14 +268,16 @@ void ChatRoomManager::sync_member_leave(const ChatRoom& room, std::int64_t sourc
 
 void ChatRoomManager::sync_single(const OnlineAccount& acc, std::int64_t source_member) {
     if (!acc.chat_room) return;
-    json r = {{"SourceMemberNumber", source_member}, {"Character", char_shared_data(acc, *acc.chat_room)}};
+    json r = {{"SourceMemberNumber", source_member},
+              {"Character", char_shared_data(acc, *acc.chat_room)}};
     hub_.emit_to_room(acc.chat_room->socket_room(), "ChatRoomSyncSingle", r);
 }
 
 void ChatRoomManager::chat_room_message(ChatRoom& room, std::int64_t sender,
                                         const std::string& content, const std::string& type,
                                         const json& target, const json& dictionary) {
-    json msg = {{"Sender", sender}, {"Content", content}, {"Type", type}, {"Dictionary", dictionary}};
+    json msg = {
+        {"Sender", sender}, {"Content", content}, {"Type", type}, {"Dictionary", dictionary}};
     if (target.is_null()) {
         hub_.emit_to_room(room.socket_room(), "ChatRoomMessage", msg);
     } else if (target.is_number_integer()) {
@@ -267,7 +291,7 @@ void ChatRoomManager::chat_room_message(ChatRoom& room, std::int64_t sender,
 }
 
 void ChatRoomManager::room_remove_locked(const std::shared_ptr<OnlineAccount>& acc,
-                                          const std::string& reason, json dictionary) {
+                                         const std::string& reason, json dictionary) {
     if (!acc->chat_room) return;
     ChatRoom* room = acc->chat_room;
     std::string room_socket = room->socket_room();
@@ -275,24 +299,26 @@ void ChatRoomManager::room_remove_locked(const std::shared_ptr<OnlineAccount>& a
 
     if (acc->socket) acc->socket->leave(room_socket);
     auto& members = room->accounts;
-    members.erase(std::remove_if(members.begin(), members.end(),
-                                 [&](const std::shared_ptr<OnlineAccount>& a) { return a->id == acc->id; }),
-                  members.end());
+    members.erase(
+        std::remove_if(members.begin(), members.end(),
+                       [&](const std::shared_ptr<OnlineAccount>& a) { return a->id == acc->id; }),
+        members.end());
 
     if (members.empty()) {
         std::string rid = room->id;
         acc->chat_room = nullptr;
-        gs_.rooms.erase(std::remove_if(gs_.rooms.begin(), gs_.rooms.end(),
-                                       [&](const std::shared_ptr<ChatRoom>& r) { return r->id == rid; }),
-                        gs_.rooms.end());
+        gs_.rooms.erase(
+            std::remove_if(gs_.rooms.begin(), gs_.rooms.end(),
+                           [&](const std::shared_ptr<ChatRoom>& r) { return r->id == rid; }),
+            gs_.rooms.end());
         return;
     }
 
     if (!dictionary.is_array() || dictionary.empty()) {
         dictionary = json::array();
-        dictionary.push_back(
-            json{{"Tag", "SourceCharacter"}, {"Text", acc->data.value("Name", std::string{})},
-                 {"MemberNumber", member}});
+        dictionary.push_back(json{{"Tag", "SourceCharacter"},
+                                  {"Text", acc->data.value("Name", std::string{})},
+                                  {"MemberNumber", member}});
     }
     chat_room_message(*room, member, reason, "Action", json(nullptr), dictionary);
     sync_member_leave(*room, member);
@@ -334,10 +360,10 @@ void ChatRoomManager::chat_room_search(std::shared_ptr<socketio::Socket> socket,
         std::string room_name = upper_trim(room.name());
         if (acc->environment() != room.environment()) continue;
         if (!game.empty() && room.data.value("Game", std::string{}) != game) continue;
-        if (static_cast<std::int64_t>(room.accounts.size()) >= room.limit() && !full_rooms) continue;
-        if (!spaces.empty() &&
-            std::find(spaces.begin(), spaces.end(), room.data.value("Space", std::string{})) ==
-                spaces.end())
+        if (static_cast<std::int64_t>(room.accounts.size()) >= room.limit() && !full_rooms)
+            continue;
+        if (!spaces.empty() && std::find(spaces.begin(), spaces.end(),
+                                         room.data.value("Space", std::string{})) == spaces.end())
             continue;
         if (has_member(room.data.value("Ban", json::array()), acc->member_number())) continue;
         if (!query.empty()) {
@@ -358,9 +384,9 @@ void ChatRoomManager::chat_room_search(std::shared_ptr<socketio::Socket> socket,
             continue;
 
         json r = json::object();
-        for (const char* k : {"Name", "Language", "Creator", "CreatorMemberNumber", "Creation",
-                              "Description", "BlockCategory", "Game", "Space", "Visibility", "Access",
-                              "Private", "Locked"}) {
+        for (const char* k :
+             {"Name", "Language", "Creator", "CreatorMemberNumber", "Creation", "Description",
+              "BlockCategory", "Game", "Space", "Visibility", "Access", "Private", "Locked"}) {
             copy_if_present(r, room.data, k);
         }
         r["MemberCount"] = static_cast<std::int64_t>(room.accounts.size());
@@ -392,7 +418,8 @@ void ChatRoomManager::chat_room_create(std::shared_ptr<socketio::Socket> socket,
     if (has_visibility)
         data["Private"] = !has_str(data["Visibility"], "All");
     else
-        data["Visibility"] = data["Private"].get<bool>() ? json::array({"Admin"}) : json::array({"All"});
+        data["Visibility"] =
+            data["Private"].get<bool>() ? json::array({"Admin"}) : json::array({"All"});
 
     bool has_access = data.contains("Access") && data["Access"].is_array();
     bool has_locked = data.contains("Locked") && data["Locked"].is_boolean();
@@ -402,8 +429,8 @@ void ChatRoomManager::chat_room_create(std::shared_ptr<socketio::Socket> socket,
     } else if (has_access) {
         data["Locked"] = !has_str(data["Access"], "All");
     } else if (has_locked) {
-        data["Access"] = data["Locked"].get<bool>() ? json::array({"Admin", "Whitelist"})
-                                                     : json::array({"All"});
+        data["Access"] =
+            data["Locked"].get<bool>() ? json::array({"Admin", "Whitelist"}) : json::array({"All"});
     } else {
         data["Locked"] = false;
         data["Access"] = json::array({"All"});
@@ -414,7 +441,8 @@ void ChatRoomManager::chat_room_create(std::shared_ptr<socketio::Socket> socket,
     auto cfg = settings_.snapshot();
     static const std::regex name_re(R"(^[\x20-\x7E]{1,20}$)");
     if (!std::regex_match(name, name_re) ||
-        static_cast<int>(data["Description"].get<std::string>().size()) > cfg->description_max_len ||
+        static_cast<int>(data["Description"].get<std::string>().size()) >
+            cfg->description_max_len ||
         data["Background"].get<std::string>().size() > 100) {
         invalid();
         return;
@@ -438,7 +466,8 @@ void ChatRoomManager::chat_room_create(std::shared_ptr<socketio::Socket> socket,
     if (!data.contains("BlockCategory") || !data["BlockCategory"].is_array())
         data["BlockCategory"] = json::array();
     if (!data.contains("Ban") || !data["Ban"].is_array()) data["Ban"] = json::array();
-    if (!data.contains("Whitelist") || !data["Whitelist"].is_array()) data["Whitelist"] = json::array();
+    if (!data.contains("Whitelist") || !data["Whitelist"].is_array())
+        data["Whitelist"] = json::array();
     if (!data.contains("Admin") || !data["Admin"].is_array())
         data["Admin"] = json::array({acc->member_number()});
 
@@ -537,7 +566,7 @@ void ChatRoomManager::chat_room_leave(const std::string& socket_id) {
 }
 
 void ChatRoomManager::chat_room_chat(const std::string& socket_id, json data) {
-    static const std::vector<std::string> kTypes = {"Chat", "Action", "Activity", "Emote",
+    static const std::vector<std::string> kTypes = {"Chat",    "Action", "Activity", "Emote",
                                                     "Whisper", "Hidden", "Status"};
     if (!data.is_object() || !data.contains("Content") || !data["Content"].is_string() ||
         !data.contains("Type") || !data["Type"].is_string())
@@ -605,7 +634,8 @@ void ChatRoomManager::sync_character(ChatRoom& room, std::int64_t source_member,
         if (a->member_number() == source_member) source = a;
     }
     if (!target || !source) return;
-    json cd = {{"SourceMemberNumber", source_member}, {"Character", char_shared_data(*target, room)}};
+    json cd = {{"SourceMemberNumber", source_member},
+               {"Character", char_shared_data(*target, room)}};
     hub_.emit_to_room(room.socket_room(), "ChatRoomSyncCharacter", cd, source->id);
 }
 
@@ -618,7 +648,8 @@ void ChatRoomManager::sync_reorder_players(const ChatRoom& room, std::int64_t so
     (void)source_member;
     json order = json::array();
     for (const auto& a : room.accounts) order.push_back(a->member_number());
-    hub_.emit_to_room(room.socket_room(), "ChatRoomSyncReorderPlayers", json{{"PlayerOrder", order}});
+    hub_.emit_to_room(room.socket_room(), "ChatRoomSyncReorderPlayers",
+                      json{{"PlayerOrder", order}});
 }
 
 namespace {
@@ -628,17 +659,21 @@ json source_dict(const OnlineAccount& acc) {
                              {"Text", acc.data.value("Name", std::string{})},
                              {"MemberNumber", acc.member_number()}}});
 }
-bool role_list_restrictive(const json& roles) { return !has_str(roles, "All"); }
+bool role_list_restrictive(const json& roles) {
+    return !has_str(roles, "All");
+}
 }  // namespace
 
-void ChatRoomManager::chat_room_character_expression_update(const std::string& socket_id, json data) {
+void ChatRoomManager::chat_room_character_expression_update(const std::string& socket_id,
+                                                            json data) {
     if (!data.is_object() || !data.contains("Group") || !data["Group"].is_string() ||
         data["Group"].get<std::string>().empty())
         return;
     std::lock_guard<std::mutex> lock(gs_.mu);
     auto acc = account_for(socket_id);
     if (!acc) return;
-    if (data.contains("Appearance") && data["Appearance"].is_array() && data["Appearance"].size() >= 5)
+    if (data.contains("Appearance") && data["Appearance"].is_array() &&
+        data["Appearance"].size() >= 5)
         acc->data["Appearance"] = data["Appearance"];
     if (!acc->chat_room) return;
     json out = {{"MemberNumber", acc->member_number()}, {"Group", data["Group"]}};
@@ -709,8 +744,9 @@ void ChatRoomManager::chat_room_character_item_update(const std::string& socket_
 }
 
 void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
-    if (!data.is_object() || !data.contains("MemberNumber") || !data["MemberNumber"].is_number_integer() ||
-        !data.contains("Action") || !data["Action"].is_string())
+    if (!data.is_object() || !data.contains("MemberNumber") ||
+        !data["MemberNumber"].is_number_integer() || !data.contains("Action") ||
+        !data["Action"].is_string())
         return;
     std::lock_guard<std::mutex> lock(gs_.mu);
     auto acc = account_for(socket_id);
@@ -732,9 +768,9 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         }
         json r = data["Room"];
         if (!r.contains("Name") || !r["Name"].is_string() || !r.contains("Description") ||
-            !r["Description"].is_string() || !r.contains("Background") || !r["Background"].is_string() ||
-            !r.contains("Admin") || !r["Admin"].is_array() || !r.contains("Ban") ||
-            !r["Ban"].is_array()) {
+            !r["Description"].is_string() || !r.contains("Background") ||
+            !r["Background"].is_string() || !r.contains("Admin") || !r["Admin"].is_array() ||
+            !r.contains("Ban") || !r["Ban"].is_array()) {
             acc->socket->emit("ChatRoomUpdateResponse", "InvalidRoomData");
             return;
         }
@@ -742,7 +778,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         auto cfg = settings_.snapshot();
         static const std::regex name_re(R"(^[\x20-\x7E]{1,20}$)");
         if (!std::regex_match(new_name, name_re) ||
-            static_cast<int>(r["Description"].get<std::string>().size()) > cfg->description_max_len ||
+            static_cast<int>(r["Description"].get<std::string>().size()) >
+                cfg->description_max_len ||
             r["Background"].get<std::string>().size() > 100) {
             acc->socket->emit("ChatRoomUpdateResponse", "InvalidRoomData");
             return;
@@ -758,7 +795,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         if (r.contains("Visibility") && r["Visibility"].is_array())
             r["Private"] = !has_str(r["Visibility"], "All");
         else if (r.contains("Private") && r["Private"].is_boolean())
-            r["Visibility"] = r["Private"].get<bool>() ? json::array({"Admin"}) : json::array({"All"});
+            r["Visibility"] =
+                r["Private"].get<bool>() ? json::array({"Admin"}) : json::array({"All"});
         if (r.contains("Access") && r["Access"].is_array())
             r["Locked"] = !has_str(r["Access"], "All");
         else if (r.contains("Locked") && r["Locked"].is_boolean())
@@ -770,11 +808,12 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         room.data["Background"] = r["Background"];
         if (r.contains("Custom")) room.data["Custom"] = r["Custom"];
         room.data["Description"] = r["Description"];
-        room.data["BlockCategory"] =
-            (r.contains("BlockCategory") && r["BlockCategory"].is_array()) ? r["BlockCategory"]
-                                                                          : json::array();
+        room.data["BlockCategory"] = (r.contains("BlockCategory") && r["BlockCategory"].is_array())
+                                         ? r["BlockCategory"]
+                                         : json::array();
         room.data["Ban"] = r["Ban"];
-        if (r.contains("Whitelist") && r["Whitelist"].is_array()) room.data["Whitelist"] = r["Whitelist"];
+        if (r.contains("Whitelist") && r["Whitelist"].is_array())
+            room.data["Whitelist"] = r["Whitelist"];
         room.data["Admin"] = r["Admin"];
         room.data["Game"] = (r.contains("Game") && r["Game"].is_string() &&
                              r["Game"].get<std::string>().size() <= 100)
@@ -786,32 +825,37 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         if (limit < cfg->room_limit_min || limit > cfg->room_limit_max)
             limit = cfg->room_limit_default;
         room.data["Limit"] = limit;
-        if (r.contains("Visibility") && r["Visibility"].is_array()) room.data["Visibility"] = r["Visibility"];
+        if (r.contains("Visibility") && r["Visibility"].is_array())
+            room.data["Visibility"] = r["Visibility"];
         if (r.contains("Access") && r["Access"].is_array()) room.data["Access"] = r["Access"];
         if (r.contains("Private") && r["Private"].is_boolean()) room.data["Private"] = r["Private"];
         if (r.contains("Locked") && r["Locked"].is_boolean()) room.data["Locked"] = r["Locked"];
         if (r.contains("MapData")) room.data["MapData"] = r["MapData"];
         acc->socket->emit("ChatRoomUpdateResponse", "Updated");
         json dict = json::array();
-        dict.push_back(json{{"Tag", "SourceCharacter"}, {"Text", acc->data.value("Name", std::string{})},
+        dict.push_back(json{{"Tag", "SourceCharacter"},
+                            {"Text", acc->data.value("Name", std::string{})},
                             {"MemberNumber", me}});
         dict.push_back(json{{"Tag", "ChatRoomName"}, {"Text", room.name()}});
         dict.push_back(json{{"Tag", "ChatRoomLimit"}, {"Text", std::to_string(room.limit())}});
-        dict.push_back(json{{"Tag", "ChatRoomPrivacy"},
-                            {"TextToLookUp", role_list_restrictive(room.data.value("Visibility", json::array()))
-                                                 ? "Private"
-                                                 : "Public"}});
-        dict.push_back(json{{"Tag", "ChatRoomLocked"},
-                            {"TextToLookUp", role_list_restrictive(room.data.value("Access", json::array()))
-                                                 ? "Locked"
-                                                 : "Unlocked"}});
+        dict.push_back(json{
+            {"Tag", "ChatRoomPrivacy"},
+            {"TextToLookUp", role_list_restrictive(room.data.value("Visibility", json::array()))
+                                 ? "Private"
+                                 : "Public"}});
+        dict.push_back(
+            json{{"Tag", "ChatRoomLocked"},
+                 {"TextToLookUp", role_list_restrictive(room.data.value("Access", json::array()))
+                                      ? "Locked"
+                                      : "Unlocked"}});
         chat_room_message(room, me, "ServerUpdateRoom", "Action", json(nullptr), dict);
         sync_room_properties(room, me);
         return;
     }
 
     if (action == "Swap" && data.contains("TargetMemberNumber") &&
-        data["TargetMemberNumber"].is_number_integer() && data.contains("DestinationMemberNumber") &&
+        data["TargetMemberNumber"].is_number_integer() &&
+        data.contains("DestinationMemberNumber") &&
         data["DestinationMemberNumber"].is_number_integer() &&
         data["TargetMemberNumber"] != data["DestinationMemberNumber"]) {
         std::int64_t tm = data["TargetMemberNumber"].get<std::int64_t>();
@@ -846,7 +890,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
             room.data["Ban"].push_back(target_member);
             if (target->socket) target->socket->emit("ChatRoomSearchResponse", "RoomBanned");
             dict.push_back(json{{"Tag", "SourceCharacter"},
-                                {"Text", acc->data.value("Name", std::string{})}, {"MemberNumber", me}});
+                                {"Text", acc->data.value("Name", std::string{})},
+                                {"MemberNumber", me}});
             dict.push_back(json{{"Tag", "TargetCharacterName"},
                                 {"Text", target->data.value("Name", std::string{})},
                                 {"MemberNumber", target->member_number()}});
@@ -855,7 +900,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         } else if (action == "Kick") {
             if (target->socket) target->socket->emit("ChatRoomSearchResponse", "RoomKicked");
             dict.push_back(json{{"Tag", "SourceCharacter"},
-                                {"Text", acc->data.value("Name", std::string{})}, {"MemberNumber", me}});
+                                {"Text", acc->data.value("Name", std::string{})},
+                                {"MemberNumber", me}});
             dict.push_back(json{{"Tag", "TargetCharacterName"},
                                 {"Text", target->data.value("Name", std::string{})},
                                 {"MemberNumber", target->member_number()}});
@@ -875,7 +921,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
         } else if (action == "Shuffle") {
             static thread_local std::mt19937_64 rng{std::random_device{}()};
             std::shuffle(members.begin(), members.end(), rng);
-            chat_room_message(room, me, "ServerShuffle", "Action", json(nullptr), source_dict(*acc));
+            chat_room_message(room, me, "ServerShuffle", "Action", json(nullptr),
+                              source_dict(*acc));
             sync_reorder_players(room, me);
         } else if (action == "Promote" &&
                    !has_member(room.data.value("Admin", json::array()), target->member_number())) {
@@ -898,7 +945,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
             chat_room_message(room, me, "ServerRoomWhitelist", "Action", json(nullptr), dict);
             sync_room_properties(room, me);
         } else if (action == "Unwhitelist" &&
-                   has_member(room.data.value("Whitelist", json::array()), target->member_number())) {
+                   has_member(room.data.value("Whitelist", json::array()),
+                              target->member_number())) {
             auto& wl = room.data["Whitelist"];
             wl.erase(std::remove(wl.begin(), wl.end(), json(target->member_number())), wl.end());
             tgt_dict();
@@ -930,7 +978,8 @@ void ChatRoomManager::chat_room_admin(const std::string& socket_id, json data) {
 }
 
 void ChatRoomManager::chat_room_allow_item(std::shared_ptr<socketio::Socket> socket, json data) {
-    if (!data.is_object() || !data.contains("MemberNumber") || !data["MemberNumber"].is_number_integer())
+    if (!data.is_object() || !data.contains("MemberNumber") ||
+        !data["MemberNumber"].is_number_integer())
         return;
     std::lock_guard<std::mutex> lock(gs_.mu);
     auto acc = account_for(socket->id());
@@ -938,8 +987,8 @@ void ChatRoomManager::chat_room_allow_item(std::shared_ptr<socketio::Socket> soc
     std::int64_t target = data["MemberNumber"].get<std::int64_t>();
     for (const auto& room_acc : acc->chat_room->accounts) {
         if (room_acc->member_number() == target) {
-            socket->emit("ChatRoomAllowItem",
-                         json{{"MemberNumber", target}, {"AllowItem", get_allow_item(*acc, *room_acc)}});
+            socket->emit("ChatRoomAllowItem", json{{"MemberNumber", target},
+                                                   {"AllowItem", get_allow_item(*acc, *room_acc)}});
             return;
         }
     }

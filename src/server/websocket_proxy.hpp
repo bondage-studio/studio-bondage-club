@@ -20,7 +20,6 @@ namespace sbc::server {
 // either side closes. Used for the socket.io WebSocket transport.
 boost::asio::awaitable<void> relay_websocket(Request& req, ResponseWriter& w, const Url& target,
                                              const std::string& spoofed_origin,
-                                             net::TlsContext& tls,
-                                             boost::asio::any_io_executor ex);
+                                             net::TlsContext& tls, boost::asio::any_io_executor ex);
 
 }  // namespace sbc::server

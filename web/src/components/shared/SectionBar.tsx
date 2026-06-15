@@ -5,7 +5,7 @@ export function SectionBar({
   dirty,
   busy,
   onRefresh,
-  onSave
+  onSave,
 }: {
   dirty: boolean;
   busy: boolean;

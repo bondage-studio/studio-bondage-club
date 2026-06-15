@@ -99,7 +99,8 @@ asio::awaitable<void> serve_content(Request& req, ResponseWriter& w, HeaderMap h
     } else {
         std::string ims = req.headers.get("If-Modified-Since");
         if (!ims.empty() && mod_time.has_value()) {
-            if (auto since = parse_http_date(ims); since && *mod_time <= *since) not_modified = true;
+            if (auto since = parse_http_date(ims); since && *mod_time <= *since)
+                not_modified = true;
         }
     }
     if (not_modified) {
@@ -140,13 +141,11 @@ asio::awaitable<void> serve_content(Request& req, ResponseWriter& w, HeaderMap h
                 }
                 std::int64_t len = end - start + 1;
                 headers.set("Content-Range", "bytes " + std::to_string(start) + "-" +
-                                                 std::to_string(end) + "/" +
-                                                 std::to_string(total));
+                                                 std::to_string(end) + "/" + std::to_string(total));
                 co_await w.send_header(206, std::move(headers), len);
                 if (!req.is_head() && len > 0) {
-                    co_await w.write_chunk(
-                        std::string_view(body).substr(static_cast<std::size_t>(start),
-                                                      static_cast<std::size_t>(len)));
+                    co_await w.write_chunk(std::string_view(body).substr(
+                        static_cast<std::size_t>(start), static_cast<std::size_t>(len)));
                 }
                 co_await w.finish();
                 co_return;

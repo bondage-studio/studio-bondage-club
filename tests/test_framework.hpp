@@ -24,20 +24,20 @@ struct Registrar {
 
 }  // namespace sbctest
 
-#define SBC_TEST(name)                                                 \
-    static void name();                                                \
-    static ::sbctest::Registrar sbc_reg_##name(#name, name);           \
+#define SBC_TEST(name)                                       \
+    static void name();                                      \
+    static ::sbctest::Registrar sbc_reg_##name(#name, name); \
     static void name()
 
 #define CHECK(cond) ::sbctest::check((cond), #cond, __FILE__, __LINE__)
 
-#define CHECK_THROWS(stmt)                                                          \
-    do {                                                                           \
-        bool sbc_threw = false;                                                    \
-        try {                                                                      \
-            stmt;                                                                  \
-        } catch (...) {                                                            \
-            sbc_threw = true;                                                      \
-        }                                                                          \
+#define CHECK_THROWS(stmt)                                                             \
+    do {                                                                               \
+        bool sbc_threw = false;                                                        \
+        try {                                                                          \
+            stmt;                                                                      \
+        } catch (...) {                                                                \
+            sbc_threw = true;                                                          \
+        }                                                                              \
         ::sbctest::check(sbc_threw, "expected exception: " #stmt, __FILE__, __LINE__); \
     } while (0)

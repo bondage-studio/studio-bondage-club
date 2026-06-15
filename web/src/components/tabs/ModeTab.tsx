@@ -5,7 +5,7 @@ import type { AppConfig, ConfigResponse, Mode } from "../../types";
 
 const modeLabels: Record<Mode, string> = {
   reverse_proxy_cache: "Reverse proxy",
-  package_cache: "Package cache"
+  package_cache: "Package cache",
 };
 
 interface Props {
@@ -29,7 +29,7 @@ export function ModeTab({ form, snapshot, onChange }: Props) {
                 form.mode === m
                   ? "border-primary bg-primary/10 font-medium text-primary ring-1 ring-primary"
                   : "hover:border-border hover:bg-accent",
-                m === "package_cache" && "cursor-not-allowed opacity-50"
+                m === "package_cache" && "cursor-not-allowed opacity-50",
               )}
             >
               <span>{modeLabels[m]}</span>
@@ -49,7 +49,7 @@ export function ModeTab({ form, snapshot, onChange }: Props) {
               <span
                 className={cn(
                   "mt-1 h-2 w-2 shrink-0 rounded-full",
-                  cap.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  cap.enabled ? "bg-emerald-500" : "bg-muted-foreground/40",
                 )}
               />
               <div>

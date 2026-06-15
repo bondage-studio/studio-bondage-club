@@ -62,8 +62,8 @@ std::vector<std::string> split(std::string_view s, char sep) {
     std::size_t pos = 0;
     while (pos <= s.size()) {
         std::size_t next = s.find(sep, pos);
-        out.emplace_back(s.substr(pos, next == std::string_view::npos ? std::string_view::npos
-                                                                       : next - pos));
+        out.emplace_back(
+            s.substr(pos, next == std::string_view::npos ? std::string_view::npos : next - pos));
         if (next == std::string_view::npos) break;
         pos = next + 1;
     }

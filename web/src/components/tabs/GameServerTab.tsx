@@ -48,8 +48,8 @@ export function GameServerTab({ form, serverMode, gameStatus, onSwitchMode, onCh
           </FormField>
           <p className="mt-2.5 text-xs text-muted-foreground">
             Where the embedded server keeps its account database. Leave empty to use the default{" "}
-            <code>{defaultDir}</code>. Saving a new location applies live — you'll be asked whether to
-            migrate the existing accounts or start fresh; live game sockets reconnect either way.
+            <code>{defaultDir}</code>. Saving a new location applies live — you'll be asked whether
+            to migrate the existing accounts or start fresh; live game sockets reconnect either way.
           </p>
         </Panel>
       )}

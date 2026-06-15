@@ -9,8 +9,7 @@ namespace sbc {
 // literal field; dotted keys update/create nested objects while preserving
 // siblings, which extensions rely on for partial paths such as
 // "ExtensionSettings.BCX".
-void merge_set_field(nlohmann::json& root, const std::string& key,
-                     const nlohmann::json& value);
+void merge_set_field(nlohmann::json& root, const std::string& key, const nlohmann::json& value);
 
 // merge_set_fields applies merge_set_field for every member of `fields` (which
 // must be a JSON object) into `root`.

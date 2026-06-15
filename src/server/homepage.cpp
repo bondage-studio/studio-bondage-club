@@ -25,12 +25,23 @@ std::string html_escape(const std::string& s) {
     out.reserve(s.size());
     for (char c : s) {
         switch (c) {
-            case '&': out += "&amp;"; break;
-            case '<': out += "&lt;"; break;
-            case '>': out += "&gt;"; break;
-            case '"': out += "&#34;"; break;
-            case '\'': out += "&#39;"; break;
-            default: out += c;
+            case '&':
+                out += "&amp;";
+                break;
+            case '<':
+                out += "&lt;";
+                break;
+            case '>':
+                out += "&gt;";
+                break;
+            case '"':
+                out += "&#34;";
+                break;
+            case '\'':
+                out += "&#39;";
+                break;
+            default:
+                out += c;
         }
     }
     return out;
@@ -77,13 +88,17 @@ asio::awaitable<void> serve_homepage_shell(Request& req, ResponseWriter& w,
         "        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe "
         "UI\", sans-serif;\n"
         "      }\n"
-        "      #" + sid + " {\n"
+        "      #" +
+        sid +
+        " {\n"
         "        display: grid;\n"
         "        min-height: 100vh;\n"
         "        place-items: center;\n"
         "        padding: 24px;\n"
         "      }\n"
-        "      #" + sid + " > section {\n"
+        "      #" +
+        sid +
+        " > section {\n"
         "        width: min(520px, 100%);\n"
         "        border: 1px solid #d3dee1;\n"
         "        border-radius: 8px;\n"
@@ -91,25 +106,39 @@ asio::awaitable<void> serve_homepage_shell(Request& req, ResponseWriter& w,
         "        background: #ffffff;\n"
         "        box-shadow: 0 18px 44px rgba(18, 42, 50, 0.14);\n"
         "      }\n"
-        "      #" + sid + " h1 { margin: 0 0 8px; font-size: 1.25rem; line-height: 1.2; }\n"
-        "      #" + sid + " p { margin: 0; color: #5f6d74; line-height: 1.45; }\n"
-        "      #" + sid + "[data-state=\"error\"] > section { border-color: #deb4af; background: "
+        "      #" +
+        sid +
+        " h1 { margin: 0 0 8px; font-size: 1.25rem; line-height: 1.2; }\n"
+        "      #" +
+        sid +
+        " p { margin: 0; color: #5f6d74; line-height: 1.45; }\n"
+        "      #" +
+        sid +
+        "[data-state=\"error\"] > section { border-color: #deb4af; background: "
         "#fff8f7; }\n"
-        "      #" + sid + "[data-state=\"error\"] p { color: #7a2822; }\n"
+        "      #" +
+        sid +
+        "[data-state=\"error\"] p { color: #7a2822; }\n"
         "    </style>\n"
-        "    <script id=\"" + kBootstrapScriptID + "\" type=\"application/json\">" +
-        bootstrap.dump() +
+        "    <script id=\"" +
+        kBootstrapScriptID + "\" type=\"application/json\">" + bootstrap.dump() +
         "</script>\n"
         "  </head>\n"
         "  <body>\n"
-        "    <main id=\"" + sid + "\" data-state=\"loading\">\n"
+        "    <main id=\"" +
+        sid +
+        "\" data-state=\"loading\">\n"
         "      <section>\n"
         "        <h1>Studio Bondage Club</h1>\n"
         "        <p data-studio-status-text>Loading local panel and homepage cache.</p>\n"
         "      </section>\n"
         "    </main>\n"
-        "    <div id=\"" + std::string(kAdminRootID) + "\"></div>\n"
-        "    <script type=\"module\" src=\"" + html_escape(script_path) + "\"></script>\n"
+        "    <div id=\"" +
+        std::string(kAdminRootID) +
+        "\"></div>\n"
+        "    <script type=\"module\" src=\"" +
+        html_escape(script_path) +
+        "\"></script>\n"
         "  </body>\n"
         "</html>";
 

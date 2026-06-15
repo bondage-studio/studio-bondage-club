@@ -19,10 +19,10 @@ public:
 
     static Url resolve(const Url& base, std::string_view reference);
 
-    std::string scheme() const;        // "http" / "https" / "socks5" ...
-    std::string host() const;          // hostname without port
-    std::string user() const;          // decoded userinfo username ("" if none)
-    std::string password() const;      // decoded userinfo password ("" if none)
+    std::string scheme() const;    // "http" / "https" / "socks5" ...
+    std::string host() const;      // hostname without port
+    std::string user() const;      // decoded userinfo username ("" if none)
+    std::string password() const;  // decoded userinfo password ("" if none)
     bool has_userinfo() const;
     std::uint16_t port() const;        // explicit or scheme default
     std::string port_string() const;   // "" if no explicit port
@@ -35,8 +35,8 @@ public:
     bool has_query() const;
     bool is_https() const { return scheme() == "https"; }
 
-    void set_path(std::string_view p);       // sets encoded path
-    void set_query(std::string_view q);      // raw query, "" clears it
+    void set_path(std::string_view p);   // sets encoded path
+    void set_query(std::string_view q);  // raw query, "" clears it
     void clear_query_and_fragment();
     void ensure_trailing_slash();
 

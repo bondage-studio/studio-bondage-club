@@ -66,9 +66,8 @@ std::unique_ptr<Stream> pool_take(std::mutex& mu,
 
 // Return a still-usable connection to the pool, or drop it if at capacity.
 template <class Stream>
-void pool_put(std::mutex& mu,
-              std::unordered_multimap<std::string, PoolEntry<Stream>>& map, const std::string& key,
-              std::unique_ptr<Stream> stream) {
+void pool_put(std::mutex& mu, std::unordered_multimap<std::string, PoolEntry<Stream>>& map,
+              const std::string& key, std::unique_ptr<Stream> stream) {
     std::lock_guard<std::mutex> lk(mu);
     if (map.count(key) >= kMaxIdlePerHost) return;  // unique_ptr drops -> socket closes
     map.insert({key, PoolEntry<Stream>{std::move(stream), SteadyClock::now()}});

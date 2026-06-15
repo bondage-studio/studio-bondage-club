@@ -209,8 +209,8 @@ bool SocketIoServer::register_ip_connection(const std::string& address) {
     std::lock_guard<std::mutex> lock(ip_mu_);
     auto& v = ip_connections_[address];
     std::int64_t now = now_ms();
-    bool over_rate = static_cast<int>(v.size()) >= rate_limit &&
-                     now - v[v.size() - rate_limit] <= 1000;
+    bool over_rate =
+        static_cast<int>(v.size()) >= rate_limit && now - v[v.size() - rate_limit] <= 1000;
     if (static_cast<int>(v.size()) >= conn_limit || over_rate) {
         if (v.empty()) ip_connections_.erase(address);
         return false;

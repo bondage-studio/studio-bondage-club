@@ -13,7 +13,11 @@ std::filesystem::path env_or(const char* var, std::filesystem::path fallback) {
 
 }  // namespace
 
-std::filesystem::path user_config_dir() { return env_or("APPDATA", "."); }
-std::filesystem::path user_cache_dir() { return env_or("LOCALAPPDATA", "."); }
+std::filesystem::path user_config_dir() {
+    return env_or("APPDATA", ".");
+}
+std::filesystem::path user_cache_dir() {
+    return env_or("LOCALAPPDATA", ".");
+}
 
 }  // namespace sbc::platform

@@ -8,7 +8,7 @@ import type {
   PendingUpdate,
   ScopeUpdateResponse,
   Userscript,
-  UserscriptSettings
+  UserscriptSettings,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -16,8 +16,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+      ...(init?.headers ?? {}),
+    },
   });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -56,12 +56,12 @@ export function resetConfig(): Promise<ConfigResponse> {
 export function saveConfigScope(
   scope: ConfigScopeName,
   slice: unknown,
-  opts?: { migrate?: boolean }
+  opts?: { migrate?: boolean },
 ): Promise<ScopeUpdateResponse> {
   const query = opts?.migrate ? "?migrate=true" : "";
   return request<ScopeUpdateResponse>(`/api/config/${scope}${query}`, {
     method: "PUT",
-    body: JSON.stringify(slice)
+    body: JSON.stringify(slice),
   });
 }
 
@@ -76,7 +76,7 @@ export function clearCache(): Promise<{ ok: boolean }> {
 export function expireCache(filter: ExpireFilter): Promise<{ ok: boolean; expired: number }> {
   return request<{ ok: boolean; expired: number }>("/api/cache/expire", {
     method: "POST",
-    body: JSON.stringify(filter)
+    body: JSON.stringify(filter),
   });
 }
 
@@ -100,40 +100,40 @@ export function listUserscripts(): Promise<Userscript[]> {
 export function saveUserscript(script: Userscript): Promise<Userscript> {
   return request<Userscript>("/api/userscripts", {
     method: "POST",
-    body: JSON.stringify(script)
+    body: JSON.stringify(script),
   });
 }
 
 export function deleteUserscript(id: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`/api/userscripts?script=${encodeURIComponent(id)}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 }
 
 export function reorderUserscripts(ids: string[]): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/api/userscripts/reorder", {
     method: "POST",
-    body: JSON.stringify(ids)
+    body: JSON.stringify(ids),
   });
 }
 
 export function getUserscriptValues(id: string): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>(
-    `/api/userscripts/values?script=${encodeURIComponent(id)}`
+    `/api/userscripts/values?script=${encodeURIComponent(id)}`,
   );
 }
 
 export function setUserscriptValue(id: string, key: string, value: unknown): Promise<unknown> {
   return request(
     `/api/userscripts/values?script=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`,
-    { method: "PUT", body: JSON.stringify(value) }
+    { method: "PUT", body: JSON.stringify(value) },
   );
 }
 
 export function deleteUserscriptValue(id: string, key: string): Promise<unknown> {
   return request(
     `/api/userscripts/values?script=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -144,7 +144,7 @@ export function getUserscriptSettings(): Promise<UserscriptSettings> {
 export function saveUserscriptSettings(settings: UserscriptSettings): Promise<UserscriptSettings> {
   return request<UserscriptSettings>("/api/userscripts/settings", {
     method: "PUT",
-    body: JSON.stringify(settings)
+    body: JSON.stringify(settings),
   });
 }
 
@@ -157,15 +157,14 @@ export function getPendingUpdate(id: string): Promise<PendingUpdate> {
 }
 
 export function applyUserscriptUpdate(id: string): Promise<Userscript> {
-  return request<Userscript>(
-    `/api/userscripts/apply-update?script=${encodeURIComponent(id)}`,
-    { method: "POST" }
-  );
+  return request<Userscript>(`/api/userscripts/apply-update?script=${encodeURIComponent(id)}`, {
+    method: "POST",
+  });
 }
 
 export function dismissUserscriptUpdate(id: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(
     `/api/userscripts/dismiss-update?script=${encodeURIComponent(id)}`,
-    { method: "POST" }
+    { method: "POST" },
   );
 }

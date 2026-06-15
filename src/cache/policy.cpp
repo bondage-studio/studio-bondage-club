@@ -19,7 +19,9 @@ std::string trim(const std::string& s) {
     return s.substr(b, e - b);
 }
 
-bool iequals(const std::string& a, const std::string& b) { return to_lower(a) == to_lower(b); }
+bool iequals(const std::string& a, const std::string& b) {
+    return to_lower(a) == to_lower(b);
+}
 
 }  // namespace
 
@@ -47,9 +49,8 @@ bool response_cacheable(const std::string& method, const HeaderMap& req_headers,
         std::size_t start = 0;
         while (start <= value.size()) {
             std::size_t comma = value.find(',', start);
-            std::string field = to_lower(
-                trim(value.substr(start, comma == std::string::npos ? std::string::npos
-                                                                    : comma - start)));
+            std::string field = to_lower(trim(value.substr(
+                start, comma == std::string::npos ? std::string::npos : comma - start)));
             if (!field.empty() && field != "accept-encoding") return false;
             if (comma == std::string::npos) break;
             start = comma + 1;

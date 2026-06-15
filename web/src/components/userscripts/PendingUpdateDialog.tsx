@@ -53,7 +53,8 @@ export function PendingUpdateDialog({ script, onApply, onDismiss, onClose }: Pro
   return (
     <Window onClose={onClose} defaultWidth={760} defaultHeight={600} minWidth={520} minHeight={400}>
       <Window.Title>
-        Update {script.name}: v{script.version ?? "?"} {"->"} v{script.pendingUpdate?.version ?? "?"}
+        Update {script.name}: v{script.version ?? "?"} {"->"} v
+        {script.pendingUpdate?.version ?? "?"}
       </Window.Title>
 
       <Window.Body className="overflow-hidden p-4">
@@ -62,7 +63,8 @@ export function PendingUpdateDialog({ script, onApply, onDismiss, onClose }: Pro
         ) : (
           <div className="flex h-full min-h-0 flex-col gap-1.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Current (v{script.version ?? "?"}) {"->"} New (v{script.pendingUpdate?.version ?? "?"})
+              Current (v{script.version ?? "?"}) {"->"} New (v{script.pendingUpdate?.version ?? "?"}
+              )
             </p>
             <DiffEditor original={script.source} modified={newSource} className="min-h-0 flex-1" />
           </div>

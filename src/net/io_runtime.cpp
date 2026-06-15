@@ -24,7 +24,7 @@ IoRuntime::~IoRuntime() {
 
 void IoRuntime::stop() {
     if (work_) {
-        work_.reset(); // allow run() to return once outstanding work drains
+        work_.reset();  // allow run() to return once outstanding work drains
     }
     ioc_.stop();
 }

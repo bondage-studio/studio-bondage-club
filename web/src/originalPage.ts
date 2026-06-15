@@ -62,7 +62,11 @@ export async function restoreOriginalHomepage(bootstrap: StudioBootstrap | null)
     setStatus(bootstrap, "loading", "Fetching original homepage from local cache.");
     const source = await fetchHomepageSource(bootstrap);
 
-    setStatus(bootstrap, "loading", `Restoring original homepage (${source.cacheStatus || "cache"}).`);
+    setStatus(
+      bootstrap,
+      "loading",
+      `Restoring original homepage (${source.cacheStatus || "cache"}).`,
+    );
     await restoreParsedHomepage(bootstrap, source, useServiceWorkerRoutes);
   } catch (error) {
     console.error("Failed to restore original homepage", error);
@@ -75,8 +79,8 @@ async function fetchHomepageSource(bootstrap: StudioBootstrap) {
     cache: "no-store",
     credentials: "same-origin",
     headers: {
-      Accept: "application/json"
-    }
+      Accept: "application/json",
+    },
   });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -108,13 +112,20 @@ async function registerServiceWorker(bootstrap: StudioBootstrap) {
     return false;
   }
   if (!("serviceWorker" in navigator)) {
-    setStatus(bootstrap, "loading", "Service workers are unavailable; continuing with local URL rewriting.");
+    setStatus(
+      bootstrap,
+      "loading",
+      "Service workers are unavailable; continuing with local URL rewriting.",
+    );
     return false;
   }
   try {
     const serviceWorkerURL = new URL(bootstrap.serviceWorkerPath, window.location.origin);
     serviceWorkerURL.searchParams.set("v", "remote-loader-v2");
-    const registration = await navigator.serviceWorker.register(serviceWorkerURL, { scope: "/", type: "module" });
+    const registration = await navigator.serviceWorker.register(serviceWorkerURL, {
+      scope: "/",
+      type: "module",
+    });
     await registration.update().catch(() => undefined);
     await navigator.serviceWorker.ready;
     if (!navigator.serviceWorker.controller || registration.installing || registration.waiting) {
@@ -123,11 +134,19 @@ async function registerServiceWorker(bootstrap: StudioBootstrap) {
     if (navigator.serviceWorker.controller) {
       return true;
     }
-    setStatus(bootstrap, "loading", "Service worker is not controlling this page yet; continuing with local URL rewriting.");
+    setStatus(
+      bootstrap,
+      "loading",
+      "Service worker is not controlling this page yet; continuing with local URL rewriting.",
+    );
     return false;
   } catch (error) {
     console.warn("Studio service worker registration failed", error);
-    setStatus(bootstrap, "loading", "Service worker registration failed; continuing with local URL rewriting.");
+    setStatus(
+      bootstrap,
+      "loading",
+      "Service worker registration failed; continuing with local URL rewriting.",
+    );
     return false;
   }
 }
@@ -145,7 +164,8 @@ async function registerServiceWorker(bootstrap: StudioBootstrap) {
 // the override is in place when GameStart() reads it. Overriding the global
 // works because CommonGetServer is a function declaration on window.
 function installCommonServerHook() {
-  (window as unknown as { CommonGetServer?: () => string }).CommonGetServer = () => window.location.origin;
+  (window as unknown as { CommonGetServer?: () => string }).CommonGetServer = () =>
+    window.location.origin;
 }
 
 // CommonGetServer() always returns our origin, so the local/remote choice can't
@@ -163,7 +183,7 @@ let gameServerModeResolved = false;
 
 const gameServerSocketPath: Record<GameServerMode, string> = {
   local: "/local/socket.io",
-  remote: "/proxy/socket.io"
+  remote: "/proxy/socket.io",
 };
 
 // Resolve the initial mode lazily and once: a localStorage override wins, else the
@@ -209,7 +229,9 @@ export function setGameServerMode(mode: GameServerMode) {
 // it. The wrapper reads gameServerMode lazily, so a later switch + reconnect
 // picks up the new endpoint without re-wrapping.
 function installIoPathHook() {
-  const w = window as unknown as { io?: ((...args: unknown[]) => unknown) & Record<string, unknown> };
+  const w = window as unknown as {
+    io?: ((...args: unknown[]) => unknown) & Record<string, unknown>;
+  };
   const realIo = w.io;
   if (typeof realIo !== "function") {
     return;
@@ -264,7 +286,7 @@ function installMediaProxy() {
       ...nativeSrcDescriptor,
       set(value: string) {
         nativeSet.call(this, toLocalProxyURL(value));
-      }
+      },
     });
   }
 }
@@ -294,7 +316,7 @@ function waitForControllerChange() {
         window.clearTimeout(timeout);
         resolve();
       },
-      { once: true }
+      { once: true },
     );
   });
 }
@@ -302,7 +324,7 @@ function waitForControllerChange() {
 async function restoreParsedHomepage(
   bootstrap: StudioBootstrap,
   source: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   const parsed = new DOMParser().parseFromString(source.html, "text/html");
   document.getElementById(bootstrap.statusRootID)?.remove();
@@ -360,24 +382,34 @@ function installWindowLoadReplay() {
     this: Window,
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ) {
     if (this === window && type === "load" && listener) {
       captureLoadListener(capturedListeners, listener, options, loadHasFired);
     }
-    nativeAddEventListener.call(this, type, listener as EventListenerOrEventListenerObject, options);
+    nativeAddEventListener.call(
+      this,
+      type,
+      listener as EventListenerOrEventListenerObject,
+      options,
+    );
   };
 
   const patchedRemoveEventListener = function (
     this: Window,
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ) {
     if (this === window && type === "load" && listener) {
       markCapturedLoadListenerRemoved(capturedListeners, listener, options);
     }
-    nativeRemoveEventListener.call(this, type, listener as EventListenerOrEventListenerObject, options);
+    nativeRemoveEventListener.call(
+      this,
+      type,
+      listener as EventListenerOrEventListenerObject,
+      options,
+    );
   };
 
   window.addEventListener = patchedAddEventListener as typeof window.addEventListener;
@@ -411,7 +443,7 @@ function installWindowLoadReplay() {
       window.removeEventListener = nativeRemoveEventListener;
       nativeRemoveEventListener.call(window, "load", markLoadFired);
       onLoadTracker.uninstall();
-    }
+    },
   };
 }
 
@@ -419,11 +451,14 @@ function captureLoadListener(
   capturedListeners: CapturedLoadListener[],
   listener: EventListenerOrEventListenerObject,
   options: boolean | AddEventListenerOptions | undefined,
-  registeredAfterLoad: boolean
+  registeredAfterLoad: boolean,
 ) {
   const capture = eventListenerCapture(options);
   const existing = capturedListeners.find(
-    (entry) => !entry.removed && entry.listener === listener && eventListenerCapture(entry.options) === capture
+    (entry) =>
+      !entry.removed &&
+      entry.listener === listener &&
+      eventListenerCapture(entry.options) === capture,
   );
   if (existing) {
     return;
@@ -433,18 +468,21 @@ function captureLoadListener(
     listener,
     options,
     registeredAfterLoad,
-    removed: false
+    removed: false,
   });
 }
 
 function markCapturedLoadListenerRemoved(
   capturedListeners: CapturedLoadListener[],
   listener: EventListenerOrEventListenerObject,
-  options: boolean | EventListenerOptions | undefined
+  options: boolean | EventListenerOptions | undefined,
 ) {
   const capture = eventListenerCapture(options);
   const entry = capturedListeners.find(
-    (candidate) => !candidate.removed && candidate.listener === listener && eventListenerCapture(candidate.options) === capture
+    (candidate) =>
+      !candidate.removed &&
+      candidate.listener === listener &&
+      eventListenerCapture(candidate.options) === capture,
   );
   if (entry) {
     entry.removed = true;
@@ -486,15 +524,15 @@ function installWindowOnLoadTracker(loadHasFired: () => boolean) {
         setNativeOnLoad(value);
         assignment = {
           handler: value,
-          registeredAfterLoad: loadHasFired()
+          registeredAfterLoad: loadHasFired(),
         };
-      }
+      },
     });
   } catch (error) {
     console.warn("Studio load replay could not track window.onload", error);
     return {
       missedHandler: () => null,
-      uninstall: () => undefined
+      uninstall: () => undefined,
     };
   }
 
@@ -514,11 +552,14 @@ function installWindowOnLoadTracker(loadHasFired: () => boolean) {
         delete (window as { onload?: typeof window.onload }).onload;
       }
       window.onload = finalHandler;
-    }
+    },
   };
 }
 
-function findPropertyDescriptor(target: object, property: PropertyKey): PropertyDescriptor | undefined {
+function findPropertyDescriptor(
+  target: object,
+  property: PropertyKey,
+): PropertyDescriptor | undefined {
   let current: object | null = target;
   while (current) {
     const descriptor = Object.getOwnPropertyDescriptor(current, property);
@@ -554,7 +595,7 @@ function defineEventValue(event: Event, property: keyof Event, value: unknown) {
   try {
     Object.defineProperty(event, property, {
       configurable: true,
-      value
+      value,
     });
   } catch {
     // Browser Event properties may be non-configurable; listeners still get the correct this value.
@@ -575,7 +616,7 @@ function invokeWindowLoadListener(listener: EventListenerOrEventListenerObject, 
 
 function invokeWindowOnLoadHandler(
   handler: (this: GlobalEventHandlers, ev: Event) => unknown,
-  event: Event
+  event: Event,
 ) {
   try {
     handler.call(window, event);
@@ -599,14 +640,14 @@ function appendDocumentHead(
   bootstrap: StudioBootstrap,
   source: HomepageSourceResponse,
   useServiceWorkerRoutes: boolean,
-  scriptPromises: Promise<void>[]
+  scriptPromises: Promise<void>[],
 ) {
   for (const child of Array.from(parsed.head.childNodes)) {
     const node = prepareNode(child, bootstrap, source, useServiceWorkerRoutes);
     if (node instanceof HTMLScriptElement && shouldDeferScript(node)) {
       // Deferred/module scripts execute after the parsed body is inserted.
       scriptPromises.push(
-        appendPreparedNode(document.body, node, document.getElementById(bootstrap.adminRootID))
+        appendPreparedNode(document.body, node, document.getElementById(bootstrap.adminRootID)),
       );
       continue;
     }
@@ -624,7 +665,7 @@ function appendDocumentBody(
   bootstrap: StudioBootstrap,
   source: HomepageSourceResponse,
   useServiceWorkerRoutes: boolean,
-  scriptPromises: Promise<void>[]
+  scriptPromises: Promise<void>[],
 ) {
   const adminRoot = document.getElementById(bootstrap.adminRootID);
   for (const child of Array.from(parsed.body.childNodes)) {
@@ -641,7 +682,7 @@ function prepareNode(
   source: Node,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ): Node {
   if (source instanceof HTMLScriptElement) {
     return prepareScript(source, bootstrap, homepage, useServiceWorkerRoutes);
@@ -655,7 +696,7 @@ function prepareScript(
   source: HTMLScriptElement,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   const script = document.createElement("script");
   for (const attr of Array.from(source.attributes)) {
@@ -713,7 +754,7 @@ function rewriteResourceURLs(
   root: Node,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   if (root instanceof Element) {
     rewriteElementURLs(root, bootstrap, homepage, useServiceWorkerRoutes);
@@ -731,27 +772,41 @@ function rewriteElementURLs(
   element: Element,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   for (const attr of urlAttributes) {
     const value = element.getAttribute(attr);
     if (value) {
-      element.setAttribute(attr, localResourceURL(value, bootstrap, homepage, useServiceWorkerRoutes));
+      element.setAttribute(
+        attr,
+        localResourceURL(value, bootstrap, homepage, useServiceWorkerRoutes),
+      );
     }
   }
 
   const srcset = element.getAttribute("srcset");
   if (srcset) {
-    element.setAttribute("srcset", rewriteSrcset(srcset, bootstrap, homepage, useServiceWorkerRoutes));
+    element.setAttribute(
+      "srcset",
+      rewriteSrcset(srcset, bootstrap, homepage, useServiceWorkerRoutes),
+    );
   }
 
   const style = element.getAttribute("style");
   if (style) {
-    element.setAttribute("style", rewriteCSSURLs(style, bootstrap, homepage, useServiceWorkerRoutes));
+    element.setAttribute(
+      "style",
+      rewriteCSSURLs(style, bootstrap, homepage, useServiceWorkerRoutes),
+    );
   }
 
   if (element instanceof HTMLStyleElement && element.textContent) {
-    element.textContent = rewriteCSSURLs(element.textContent, bootstrap, homepage, useServiceWorkerRoutes);
+    element.textContent = rewriteCSSURLs(
+      element.textContent,
+      bootstrap,
+      homepage,
+      useServiceWorkerRoutes,
+    );
   }
 }
 
@@ -759,7 +814,7 @@ function rewriteSrcset(
   value: string,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   return value
     .split(",")
@@ -769,7 +824,10 @@ function rewriteSrcset(
         return trimmed;
       }
       const [url, ...descriptors] = trimmed.split(/\s+/);
-      return [localResourceURL(url, bootstrap, homepage, useServiceWorkerRoutes), ...descriptors].join(" ");
+      return [
+        localResourceURL(url, bootstrap, homepage, useServiceWorkerRoutes),
+        ...descriptors,
+      ].join(" ");
     })
     .join(", ");
 }
@@ -778,7 +836,7 @@ function rewriteCSSURLs(
   value: string,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   return value.replace(/url\((["']?)([^"')]+)\1\)/g, (_match, quote: string, rawURL: string) => {
     return `url(${quote}${localResourceURL(rawURL.trim(), bootstrap, homepage, useServiceWorkerRoutes)}${quote})`;
@@ -789,7 +847,7 @@ function localResourceURL(
   rawValue: string,
   bootstrap: StudioBootstrap,
   homepage: HomepageSourceResponse,
-  useServiceWorkerRoutes: boolean
+  useServiceWorkerRoutes: boolean,
 ) {
   const value = rawValue.trim();
   if (
@@ -822,7 +880,9 @@ function isUpstreamResource(resolved: URL, bootstrap: StudioBootstrap) {
     return false;
   }
 
-  const upstreamPath = upstream.pathname.endsWith("/") ? upstream.pathname : `${upstream.pathname}/`;
+  const upstreamPath = upstream.pathname.endsWith("/")
+    ? upstream.pathname
+    : `${upstream.pathname}/`;
   return resolved.origin === upstream.origin && resolved.pathname.startsWith(upstreamPath);
 }
 
@@ -834,7 +894,9 @@ function localProxyResourceURL(resolved: URL, bootstrap: StudioBootstrap) {
     return null;
   }
 
-  const upstreamPath = upstream.pathname.endsWith("/") ? upstream.pathname : `${upstream.pathname}/`;
+  const upstreamPath = upstream.pathname.endsWith("/")
+    ? upstream.pathname
+    : `${upstream.pathname}/`;
   if (resolved.origin !== upstream.origin || !resolved.pathname.startsWith(upstreamPath)) {
     return null;
   }
@@ -863,5 +925,7 @@ function setStatus(bootstrap: StudioBootstrap | null, state: "loading" | "error"
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unexpected error while loading original homepage.";
+  return error instanceof Error
+    ? error.message
+    : "Unexpected error while loading original homepage.";
 }

@@ -17,7 +17,8 @@ class SocketIoServer;
 // creating an ownership cycle.
 class Socket {
 public:
-    Socket(std::weak_ptr<Connection> conn, SocketIoServer* hub) : conn_(std::move(conn)), hub_(hub) {}
+    Socket(std::weak_ptr<Connection> conn, SocketIoServer* hub)
+        : conn_(std::move(conn)), hub_(hub) {}
 
     std::string id() const;
 

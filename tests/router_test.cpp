@@ -38,8 +38,8 @@ SBC_TEST(router_matches_host_prefix_pattern) {
         Url::parse("https://bondage-europe.com/R129/BondageClub/Assets/dir/a.js"), base);
     CHECK(a2.store_name == "assets");
 
-    auto a3 = router.match(
-        Url::parse("https://bondage-europe.com/R129/BondageClub/Assets/a.bin"), base);
+    auto a3 =
+        router.match(Url::parse("https://bondage-europe.com/R129/BondageClub/Assets/a.bin"), base);
     CHECK(a3.store_name.empty());
     CHECK(!a3.bypass);
 
@@ -78,14 +78,15 @@ SBC_TEST(router_carries_version_and_key_rewrite) {
     PolicyRouter router({echo, game});
     Url base = Url::parse("https://bondage-europe.com/R129/BondageClub/");
     auto a = router.match(
-        Url::parse("https://sugarchain-studio.github.io/echo-clothing-ext/Manifest.json?v=1"), base);
+        Url::parse("https://sugarchain-studio.github.io/echo-clothing-ext/Manifest.json?v=1"),
+        base);
     CHECK(a.version == "query:v");
     CHECK(a.key_pattern == "re:^/(echo-(?:clothing|activity)-ext)/(.*)$");
     CHECK(a.key_template == "$1/$2");
     CHECK(!a.version_revalidate);
 
-    auto g = router.match(
-        Url::parse("https://bondage-europe.com/R129/BondageClub/Scripts/Main.js"), base);
+    auto g = router.match(Url::parse("https://bondage-europe.com/R129/BondageClub/Scripts/Main.js"),
+                          base);
     CHECK(g.version_revalidate);
 }
 

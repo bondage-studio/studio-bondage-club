@@ -58,8 +58,8 @@ public:
     // set_post_login_hook installs a callback invoked (on the connection strand)
     // after a successful login/create — ChatRoomManager uses it to register its
     // post-login event handlers.
-    using PostLoginHook = std::function<void(std::shared_ptr<socketio::Socket>,
-                                             std::shared_ptr<OnlineAccount>)>;
+    using PostLoginHook =
+        std::function<void(std::shared_ptr<socketio::Socket>, std::shared_ptr<OnlineAccount>)>;
     void set_post_login_hook(PostLoginHook hook) { post_login_hook_ = std::move(hook); }
 
     // set_disconnect_hook installs a callback invoked when an account leaves
@@ -77,7 +77,8 @@ private:
     void enqueue_login(std::shared_ptr<socketio::Socket> socket, nlohmann::json data);
     boost::asio::awaitable<void> run_login_queue();
     boost::asio::awaitable<void> account_login_process(std::shared_ptr<socketio::Socket> socket,
-                                                       std::string upper_name, std::string password);
+                                                       std::string upper_name,
+                                                       std::string password);
     void account_update(const std::string& socket_id, nlohmann::json data);
     void account_query(std::shared_ptr<socketio::Socket> socket, nlohmann::json data);
     void account_beep(const std::string& socket_id, nlohmann::json data);
@@ -110,13 +111,14 @@ private:
     GameDb& db_;
     socketio::SocketIoServer& hub_;
     Mailer& mailer_;
-    GameState& gs_;  // shared game state (mutex + account/room registries)
+    GameState& gs_;                 // shared game state (mutex + account/room registries)
     const GameSettings& settings_;  // live, COW policy knobs
 
     // Login queue: [socket, UPPER name, password]. Processed one at a time with
     // login_pace_ms spacing.
     std::mutex login_mu_;
-    std::deque<std::tuple<std::shared_ptr<socketio::Socket>, std::string, std::string>> login_queue_;
+    std::deque<std::tuple<std::shared_ptr<socketio::Socket>, std::string, std::string>>
+        login_queue_;
     bool login_running_ = false;
 
     boost::asio::steady_timer server_info_timer_;

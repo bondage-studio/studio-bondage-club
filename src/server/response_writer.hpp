@@ -28,8 +28,7 @@ public:
     // send_header sends the status line and headers. When content_length is set,
     // a Content-Length header is emitted; otherwise the body is chunked.
     virtual boost::asio::awaitable<void> send_header(
-        int status, HeaderMap headers,
-        std::optional<std::int64_t> content_length) = 0;
+        int status, HeaderMap headers, std::optional<std::int64_t> content_length) = 0;
 
     // write_chunk streams a body chunk. Must follow send_header().
     virtual boost::asio::awaitable<void> write_chunk(std::string_view data) = 0;

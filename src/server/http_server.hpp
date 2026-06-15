@@ -20,8 +20,8 @@ namespace sbc::server {
 // every Session.
 struct ConnectionStats {
     std::atomic<std::int64_t> accepted{0};
-    std::atomic<std::int64_t> active{0};   // currently open connections
-    std::atomic<std::int64_t> handling{0}; // currently processing a request
+    std::atomic<std::int64_t> active{0};    // currently open connections
+    std::atomic<std::int64_t> handling{0};  // currently processing a request
 };
 
 // HttpServer owns the TCP acceptor and spawns a Session coroutine per

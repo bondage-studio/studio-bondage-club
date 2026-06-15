@@ -32,8 +32,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-std::string meta_key(const std::string& key) { return "m/" + key; }
-std::string body_key(const std::string& key) { return "b/" + key; }
+std::string meta_key(const std::string& key) {
+    return "m/" + key;
+}
+std::string body_key(const std::string& key) {
+    return "b/" + key;
+}
 
 std::int64_t to_millis(TimePoint tp) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
@@ -83,8 +87,7 @@ Metadata metadata_from_json(const std::string& text) {
 }
 
 bool starts_with(const leveldb::Slice& s, const std::string& prefix) {
-    return s.size() >= prefix.size() &&
-           std::memcmp(s.data(), prefix.data(), prefix.size()) == 0;
+    return s.size() >= prefix.size() && std::memcmp(s.data(), prefix.data(), prefix.size()) == 0;
 }
 
 std::string read_whole_file(const fs::path& path) {
@@ -223,8 +226,8 @@ Metadata LevelDbStore::commit_temp(const fs::path& temp_path, Metadata meta) {
     return meta;
 }
 
-std::optional<Metadata> LevelDbStore::update_metadata(
-    const std::string& key, const std::function<Metadata(Metadata)>& fn) {
+std::optional<Metadata> LevelDbStore::update_metadata(const std::string& key,
+                                                      const std::function<Metadata(Metadata)>& fn) {
     std::lock_guard<std::mutex> lock(write_mu_);
     std::string val;
     leveldb::Status s = db_->Get(leveldb::ReadOptions(), meta_key(key), &val);

@@ -82,7 +82,8 @@ private:
     void register_scopes();
     const ConfigScope* find_scope(const std::string& name) const;
     std::map<std::string, UpdateTier> apply_config(const config::Config& new_cfg,
-                                                   const std::string& only_scope, bool migrate_cache);
+                                                   const std::string& only_scope,
+                                                   bool migrate_cache);
 
     config::Store& store_;
     host::ProviderContext ctx_;

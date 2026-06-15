@@ -51,8 +51,8 @@ async function prepareScript(script: Userscript): Promise<PreparedScript> {
       fetchText(url).catch((err) => {
         console.error(`[userscript ${script.name}] @require ${url} failed`, err);
         return "";
-      })
-    )
+      }),
+    ),
   );
 
   // @resource files — text preloaded for GM_getResourceText; the URL is the
@@ -67,7 +67,7 @@ async function prepareScript(script: Userscript): Promise<PreparedScript> {
         console.error(`[userscript ${script.name}] @resource ${r.name} failed`, err);
       }
       resources[r.name] = { text, url: toProxyURL(r.url) };
-    })
+    }),
   );
 
   const bindings = buildGmBindings(script, meta, values, resources);
@@ -117,7 +117,7 @@ function executeScript(prepared: PreparedScript): Promise<void> {
   const requireCode = prepared.requires.filter(Boolean).join("\n;\n");
   const label = (prepared.meta.name || prepared.script.name || prepared.script.id).replace(
     /[^\w.-]/g,
-    "_"
+    "_",
   );
 
   const code =

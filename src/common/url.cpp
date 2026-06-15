@@ -56,15 +56,25 @@ Url Url::resolve(const Url& base, std::string_view reference) {
     return u;
 }
 
-std::string Url::scheme() const { return std::string(view_of(buffer_).scheme()); }
+std::string Url::scheme() const {
+    return std::string(view_of(buffer_).scheme());
+}
 
-std::string Url::host() const { return view_of(buffer_).host(); }
+std::string Url::host() const {
+    return view_of(buffer_).host();
+}
 
-std::string Url::user() const { return view_of(buffer_).user(); }
+std::string Url::user() const {
+    return view_of(buffer_).user();
+}
 
-std::string Url::password() const { return view_of(buffer_).password(); }
+std::string Url::password() const {
+    return view_of(buffer_).password();
+}
 
-bool Url::has_userinfo() const { return view_of(buffer_).has_userinfo(); }
+bool Url::has_userinfo() const {
+    return view_of(buffer_).has_userinfo();
+}
 
 std::string Url::port_string() const {
     auto v = view_of(buffer_);
@@ -77,17 +87,29 @@ std::uint16_t Url::port() const {
     return default_port_for(v.scheme());
 }
 
-std::string Url::authority() const { return std::string(view_of(buffer_).encoded_authority()); }
+std::string Url::authority() const {
+    return std::string(view_of(buffer_).encoded_authority());
+}
 
-std::string Url::path() const { return view_of(buffer_).path(); }
+std::string Url::path() const {
+    return view_of(buffer_).path();
+}
 
-std::string Url::encoded_path() const { return std::string(view_of(buffer_).encoded_path()); }
+std::string Url::encoded_path() const {
+    return std::string(view_of(buffer_).encoded_path());
+}
 
-std::string Url::query() const { return std::string(view_of(buffer_).encoded_query()); }
+std::string Url::query() const {
+    return std::string(view_of(buffer_).encoded_query());
+}
 
-std::string Url::fragment() const { return std::string(view_of(buffer_).encoded_fragment()); }
+std::string Url::fragment() const {
+    return std::string(view_of(buffer_).encoded_fragment());
+}
 
-bool Url::has_query() const { return view_of(buffer_).has_query(); }
+bool Url::has_query() const {
+    return view_of(buffer_).has_query();
+}
 
 void Url::set_path(std::string_view p) {
     auto r = urls::parse_uri_reference(buffer_);
@@ -138,6 +160,8 @@ std::string Url::origin() const {
     return out;
 }
 
-std::string Url::string() const { return buffer_; }
+std::string Url::string() const {
+    return buffer_;
+}
 
 }  // namespace sbc

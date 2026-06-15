@@ -4,13 +4,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
 import { Window } from "../ui/window";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import type { CacheRule, StoreConfig } from "../../types";
 
 interface RuleEditorProps {
@@ -33,13 +27,7 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
   const storeOptions = [{ name: "default" }, ...stores];
 
   return (
-    <Window
-      onClose={onClose}
-      defaultWidth={460}
-      defaultHeight={600}
-      minWidth={380}
-      minHeight={400}
-    >
+    <Window onClose={onClose} defaultWidth={460} defaultHeight={600} minWidth={380} minHeight={400}>
       <Window.Title>{isEdit ? "Edit rule" : "Add rule"}</Window.Title>
 
       <Window.Body className="overflow-y-auto p-4">
@@ -72,8 +60,7 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
 
           <div className="grid gap-1.5">
             <Label htmlFor="rule-pattern">
-              Path pattern{" "}
-              <span className="text-muted-foreground">(glob or re:…)</span>
+              Path pattern <span className="text-muted-foreground">(glob or re:…)</span>
             </Label>
             <Input
               id="rule-pattern"
@@ -131,7 +118,9 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
               type="number"
               min={0}
               value={form.ttlSeconds ?? ""}
-              onChange={(e) => set({ ttlSeconds: e.target.value ? Number(e.target.value) : undefined })}
+              onChange={(e) =>
+                set({ ttlSeconds: e.target.value ? Number(e.target.value) : undefined })
+              }
               placeholder="leave empty for store default"
             />
           </div>
@@ -157,8 +146,7 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
 
           <div className="grid gap-1.5">
             <Label htmlFor="rule-version">
-              Version{" "}
-              <span className="text-muted-foreground">(query:&lt;name&gt; or re:…)</span>
+              Version <span className="text-muted-foreground">(query:&lt;name&gt; or re:…)</span>
             </Label>
             <Input
               id="rule-version"
@@ -212,7 +200,9 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
           <div className="flex items-center justify-between rounded-md border px-3 py-2">
             <div>
               <p className="text-sm font-medium">Force cache</p>
-              <p className="text-xs text-muted-foreground">Ignore upstream Cache-Control: no-store</p>
+              <p className="text-xs text-muted-foreground">
+                Ignore upstream Cache-Control: no-store
+              </p>
             </div>
             <Switch
               checked={!!form.forceCache}

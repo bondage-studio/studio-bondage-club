@@ -17,8 +17,12 @@ namespace sbc::server::gameserver {
 namespace fs = std::filesystem;
 
 namespace {
-std::string name_key(const std::string& upper) { return "acc/name/" + upper; }
-std::string member_key(std::int64_t n) { return "acc/member/" + std::to_string(n); }
+std::string name_key(const std::string& upper) {
+    return "acc/name/" + upper;
+}
+std::string member_key(std::int64_t n) {
+    return "acc/member/" + std::to_string(n);
+}
 constexpr const char* kNextMemberKey = "meta/nextMemberNumber";
 }  // namespace
 
@@ -34,7 +38,9 @@ std::shared_ptr<GameDb> GameDb::open(const std::string& dir) {
     return std::shared_ptr<GameDb>(new GameDb(db));
 }
 
-GameDb::~GameDb() { delete db_; }
+GameDb::~GameDb() {
+    delete db_;
+}
 
 void GameDb::close() {
     delete db_;
@@ -131,8 +137,7 @@ std::int64_t GameDb::next_member_number() {
         }
     }
     std::int64_t assigned = next;
-    leveldb::Status w =
-        db_->Put(leveldb::WriteOptions(), kNextMemberKey, std::to_string(next + 1));
+    leveldb::Status w = db_->Put(leveldb::WriteOptions(), kNextMemberKey, std::to_string(next + 1));
     if (!w.ok()) throw Error("next_member_number: " + w.ToString());
     return assigned;
 }

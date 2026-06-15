@@ -16,7 +16,7 @@ namespace sbc::net {
 struct Socks5Config {
     std::string host;
     std::uint16_t port = 1080;
-    std::string user;      // empty -> no authentication
+    std::string user;  // empty -> no authentication
     std::string password;
 };
 

@@ -30,7 +30,9 @@ struct ConfigScope {
     std::function<void(config::Config&, const nlohmann::ordered_json&)> set;
     std::function<UpdateTier(const config::Config& old_cfg, const config::Config& new_cfg)> tier;
 
-    bool changed(const config::Config& a, const config::Config& b) const { return get(a) != get(b); }
+    bool changed(const config::Config& a, const config::Config& b) const {
+        return get(a) != get(b);
+    }
 };
 
 }  // namespace sbc::server

@@ -55,10 +55,9 @@ bool iequals(std::string_view a, std::string_view b) {
 // Hop-by-hop set stripped by the reverse proxy. Includes Upgrade, excludes
 // Proxy-Connection.
 bool rp_hop(std::string_view key) {
-    static const std::array hop = {
-        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-        "te", "trailer", "transfer-encoding", "upgrade"
-    };
+    static const std::array hop = {"connection",          "keep-alive", "proxy-authenticate",
+                                   "proxy-authorization", "te",         "trailer",
+                                   "transfer-encoding",   "upgrade"};
     for (const char* h : hop) {
         if (iequals(key, h)) return true;
     }
@@ -351,8 +350,8 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
 
     std::optional<Metadata> cached;
     try {
-        cached = co_await net::run_blocking(*ctx_.blocking,
-                                            [store, key]() { return store->get(key); });
+        cached =
+            co_await net::run_blocking(*ctx_.blocking, [store, key]() { return store->get(key); });
     } catch (const std::exception& e) {
         spdlog::warn("ignore invalid cache entry key={} error={}", key, e.what());
     }
@@ -391,8 +390,9 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     bool failed = false;
     try {
         result = co_await flights_.do_call(
-            key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
-                  &req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
+            key,
+            [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
+             &req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
                 std::optional<Metadata> refreshed;
                 try {
                     refreshed = co_await net::run_blocking(
@@ -408,10 +408,10 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
                 // Only revalidate-mode versions are recorded in metadata (and so
                 // surface in the versions/expire UI); immutable versions live in
                 // the key and need no tag.
-                co_return co_await fetch(
-                    snap, target, key, store, ttl, max_bytes, action.force_cache,
-                    action.cache_control, action.version_revalidate ? version : std::string(),
-                    refreshed, req);
+                co_return co_await fetch(snap, target, key, store, ttl, max_bytes,
+                                         action.force_cache, action.cache_control,
+                                         action.version_revalidate ? version : std::string(),
+                                         refreshed, req);
             });
     } catch (const std::exception& e) {
         fetch_error = e.what();
@@ -472,8 +472,8 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
 
     if (resp.status == 304 && cached) {
         HeaderMap merged = merge_headers(cached->header, sanitize(resp.headers));
-        auto updated = co_await net::run_blocking(
-            *ctx_.blocking, [store, key, merged, now, ttl, version]() {
+        auto updated =
+            co_await net::run_blocking(*ctx_.blocking, [store, key, merged, now, ttl, version]() {
                 return store->update_metadata(key, [&](Metadata m) {
                     m.header = merged;
                     m.stored_at = now;
@@ -538,8 +538,8 @@ asio::awaitable<void> Provider::proxy_pass(server::Request& req, server::Respons
     if (method_has_body(req.method)) creq.body = req.body;
 
     bool is_head = req.is_head();
-    net::HeadHandler on_head = [&w, cs = cache_status, is_head](
-                                   const net::ClientResponse& resp) -> asio::awaitable<void> {
+    net::HeadHandler on_head = [&w, cs = cache_status,
+                                is_head](const net::ClientResponse& resp) -> asio::awaitable<void> {
         (void)is_head;
         HeaderMap h;
         for (const auto& e : resp.headers.entries()) {
@@ -579,8 +579,8 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
                                             const Metadata& meta, std::string cache_status,
                                             std::string cache_control, bool stale_warning) {
     std::string key = meta.key;
-    std::string body =
-        co_await net::run_blocking(*ctx_.blocking, [store, key]() { return store->open_body(key); });
+    std::string body = co_await net::run_blocking(*ctx_.blocking,
+                                                  [store, key]() { return store->open_body(key); });
 
     HeaderMap h;
     for (const auto& e : meta.header.entries()) {
@@ -591,8 +591,8 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
     h.set("X-Studio-Cache", cache_status);
     h.set("X-Studio-Cache-Key", meta.key);
     if (!meta.version.empty()) h.set("X-Studio-Cache-Version", meta.version);
-    auto age = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - meta.stored_at)
-                   .count();
+    auto age =
+        std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - meta.stored_at).count();
     if (age < 0) age = 0;
     h.set("Age", std::to_string(age));
     if (!meta.body_sha256.empty()) h.set("X-Studio-Body-SHA256", meta.body_sha256);
@@ -652,8 +652,8 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
 
     std::optional<Metadata> cached;
     try {
-        cached = co_await net::run_blocking(*ctx_.blocking,
-                                            [store, key]() { return store->get(key); });
+        cached =
+            co_await net::run_blocking(*ctx_.blocking, [store, key]() { return store->get(key); });
     } catch (...) {
     }
 
@@ -669,8 +669,9 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         bool failed = false;
         try {
             result = co_await flights_.do_call(
-                key, [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
-                      &fetch_req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
+                key,
+                [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
+                 &fetch_req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
                     std::optional<Metadata> refreshed;
                     try {
                         refreshed = co_await net::run_blocking(
@@ -683,10 +684,10 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
                     if (refreshed && refreshed->fresh(Clock::now()) && !reval) {
                         co_return make_committed(store, *refreshed, "HIT", action.cache_control);
                     }
-                    co_return co_await fetch(
-                        *snap, target, key, store, ttl, max_bytes, action.force_cache,
-                        action.cache_control, action.version_revalidate ? version : std::string(),
-                        refreshed, fetch_req);
+                    co_return co_await fetch(*snap, target, key, store, ttl, max_bytes,
+                                             action.force_cache, action.cache_control,
+                                             action.version_revalidate ? version : std::string(),
+                                             refreshed, fetch_req);
                 });
         } catch (const std::exception& e) {
             fetch_error = e.what();
@@ -706,8 +707,8 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         auto s = result->store;
         doc.status_code = result->meta.status_code;
         doc.header = result->meta.header;
-        doc.body = co_await net::run_blocking(*ctx_.blocking,
-                                              [s, skey]() { return s->open_body(skey); });
+        doc.body =
+            co_await net::run_blocking(*ctx_.blocking, [s, skey]() { return s->open_body(skey); });
     } else {
         fs::path path = result->temp_path;
         doc.status_code = result->temp_meta.status_code;

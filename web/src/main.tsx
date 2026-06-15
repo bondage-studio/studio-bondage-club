@@ -59,7 +59,7 @@ createRoot(rootElement).render(
         <App />
       </ConfirmProvider>
     </ShadowContext.Provider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 
 function getOrCreateAdminHost(id: string) {

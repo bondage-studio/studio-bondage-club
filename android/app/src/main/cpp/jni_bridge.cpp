@@ -77,8 +77,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_studio_bondageclub_NativeServer_na
     }
 }
 
-extern "C" JNIEXPORT void JNICALL Java_com_studio_bondageclub_NativeServer_nativeStop(
-    JNIEnv* /*env*/, jobject /*thiz*/) {
+extern "C" JNIEXPORT void JNICALL
+Java_com_studio_bondageclub_NativeServer_nativeStop(JNIEnv* /*env*/, jobject /*thiz*/) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (g_server) {
         g_server->stop();

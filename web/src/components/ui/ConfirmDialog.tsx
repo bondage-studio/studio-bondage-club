@@ -20,7 +20,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive = false,
   onConfirm,
-  onCancel
+  onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
@@ -42,7 +42,13 @@ export function ConfirmDialog({
   }, [onConfirm, onCancel]);
 
   return (
-    <Window onClose={onCancel} defaultWidth={420} defaultHeight={220} minWidth={340} minHeight={180}>
+    <Window
+      onClose={onCancel}
+      defaultWidth={420}
+      defaultHeight={220}
+      minWidth={340}
+      minHeight={180}
+    >
       <Window.Title>{title}</Window.Title>
       <Window.Body className="overflow-y-auto p-4">
         <div className="text-sm text-foreground">{body}</div>

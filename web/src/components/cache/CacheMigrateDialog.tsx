@@ -24,7 +24,7 @@ export function CacheMigrateDialog({
     </>
   ),
   onChoose,
-  onClose
+  onClose,
 }: Props) {
   return (
     <Window onClose={onClose} defaultWidth={460} defaultHeight={320} minWidth={380} minHeight={260}>

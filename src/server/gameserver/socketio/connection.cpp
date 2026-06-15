@@ -173,13 +173,25 @@ void Connection::dispatch_event(const std::string& event, const nlohmann::json& 
     }
 }
 
-void Connection::on(std::string event, EventHandler fn) { handlers_[std::move(event)] = std::move(fn); }
-void Connection::off(const std::string& event) { handlers_.erase(event); }
-void Connection::set_disconnect_handler(DisconnectHandler fn) { disconnect_handler_ = std::move(fn); }
-void Connection::set_any_handler(AnyHandler fn) { any_handler_ = std::move(fn); }
+void Connection::on(std::string event, EventHandler fn) {
+    handlers_[std::move(event)] = std::move(fn);
+}
+void Connection::off(const std::string& event) {
+    handlers_.erase(event);
+}
+void Connection::set_disconnect_handler(DisconnectHandler fn) {
+    disconnect_handler_ = std::move(fn);
+}
+void Connection::set_any_handler(AnyHandler fn) {
+    any_handler_ = std::move(fn);
+}
 
-void Connection::note_joined(const std::string& room) { rooms_.insert(room); }
-void Connection::note_left(const std::string& room) { rooms_.erase(room); }
+void Connection::note_joined(const std::string& room) {
+    rooms_.insert(room);
+}
+void Connection::note_left(const std::string& room) {
+    rooms_.erase(room);
+}
 
 void Connection::disconnect() {
     asio::post(strand_, [self = shared_from_this()]() {
@@ -236,9 +248,10 @@ asio::awaitable<void> Connection::heartbeat_loop() {
         co_await ping_timer_.async_wait(asio::redirect_error(asio::use_awaitable, ec));
         if (closing_) break;
         if (awaiting_pong_) {
-            spdlog::warn("[eio {}] heartbeat: PING TIMEOUT, no pong within {}ms -> disconnect "
-                         "(ws_mode={}, awaiting_pong={})",
-                         sid_, timeout, ws_mode_, awaiting_pong_);
+            spdlog::warn(
+                "[eio {}] heartbeat: PING TIMEOUT, no pong within {}ms -> disconnect "
+                "(ws_mode={}, awaiting_pong={})",
+                sid_, timeout, ws_mode_, awaiting_pong_);
             do_disconnect("ping timeout");
             break;
         }
@@ -295,12 +308,12 @@ asio::awaitable<void> Connection::ws_writer(websocket::stream<beast::tcp_stream>
         if (!outbox_.empty()) {
             std::string pkt = std::move(outbox_.front());
             outbox_.pop_front();
-            spdlog::info("[eio {}] ws_writer: writing type='{}' len={} (on_strand={}, tid={})", sid_,
-                         pkt.empty() ? '?' : pkt.front(), pkt.size(),
+            spdlog::info("[eio {}] ws_writer: writing type='{}' len={} (on_strand={}, tid={})",
+                         sid_, pkt.empty() ? '?' : pkt.front(), pkt.size(),
                          strand_.running_in_this_thread(),
                          std::hash<std::thread::id>{}(std::this_thread::get_id()));
-            auto [ec, n] = co_await ws.async_write(asio::buffer(pkt),
-                                                   asio::as_tuple(asio::use_awaitable));
+            auto [ec, n] =
+                co_await ws.async_write(asio::buffer(pkt), asio::as_tuple(asio::use_awaitable));
             (void)n;
             if (ec) {
                 spdlog::warn("[eio {}] ws_writer: write FAILED ec={}", sid_, ec.message());

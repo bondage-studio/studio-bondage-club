@@ -37,7 +37,8 @@ void from_json(const nlohmann::ordered_json& j, CacheRule& r) {
     if (auto it = j.find("version"); it != j.end()) r.version = it->get<std::string>();
     if (auto it = j.find("keyPattern"); it != j.end()) r.key_pattern = it->get<std::string>();
     if (auto it = j.find("keyTemplate"); it != j.end()) r.key_template = it->get<std::string>();
-    if (auto it = j.find("versionRevalidate"); it != j.end()) r.version_revalidate = it->get<bool>();
+    if (auto it = j.find("versionRevalidate"); it != j.end())
+        r.version_revalidate = it->get<bool>();
 }
 
 }  // namespace sbc::cache

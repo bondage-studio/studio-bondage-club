@@ -22,12 +22,12 @@ struct CacheRule {
     std::string path_prefix;
     std::string path_pattern;
 
-    std::string store;                  // "" -> "default"
+    std::string store;  // "" -> "default"
     bool bypass = false;
-    std::optional<int> ttl_seconds;     // override TTL; nullopt -> store default
+    std::optional<int> ttl_seconds;  // override TTL; nullopt -> store default
     std::string key_mode;
     std::string cache_control;
-    bool force_cache = false;           // cache even when upstream says no-store
+    bool force_cache = false;  // cache even when upstream says no-store
 
     // Version-aware caching (all optional). `version` extracts a version label
     // from the target URL ("query:<name>" or "re:<regexp>"); a mismatch with the
@@ -52,15 +52,15 @@ struct CacheRule {
 
 struct RouteAction {
     bool bypass = false;
-    std::string store_name;                  // "" means "default"
-    std::chrono::seconds ttl{0};             // 0 means use the store's default
-    std::string key_mode;                    // "path" uses upstream-relative path
+    std::string store_name;       // "" means "default"
+    std::chrono::seconds ttl{0};  // 0 means use the store's default
+    std::string key_mode;         // "path" uses upstream-relative path
     std::string cache_control;
-    bool force_cache = false;                // bypass ResponseCacheable checks
+    bool force_cache = false;  // bypass ResponseCacheable checks
     std::string version;
     std::string key_pattern;
     std::string key_template;
-    bool version_revalidate = false;         // version = freshness signal vs key part
+    bool version_revalidate = false;  // version = freshness signal vs key part
 };
 
 // Path-style glob (*, ?, [set]); '*' does not cross '/'.

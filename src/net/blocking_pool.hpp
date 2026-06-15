@@ -71,14 +71,14 @@ boost::asio::awaitable<std::invoke_result_t<F>> run_blocking(BlockingPool& bp, F
                         ep = std::current_exception();
                     }
                     auto ex = asio::get_associated_executor(handler);
-                    asio::post(ex, [handler = std::move(handler), ep,
-                                    value = std::move(value)]() mutable {
-                        if (ep) {
-                            std::move(handler)(ep, R{});
-                        } else {
-                            std::move(handler)(std::exception_ptr{}, std::move(*value));
-                        }
-                    });
+                    asio::post(
+                        ex, [handler = std::move(handler), ep, value = std::move(value)]() mutable {
+                            if (ep) {
+                                std::move(handler)(ep, R{});
+                            } else {
+                                std::move(handler)(std::exception_ptr{}, std::move(*value));
+                            }
+                        });
                 });
             },
             asio::use_awaitable);

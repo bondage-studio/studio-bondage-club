@@ -48,19 +48,16 @@ asio::awaitable<void> HttpServer::accept_loop() {
     for (;;) {
         boost::system::error_code ec;
         tcp::socket socket(runtime_.context());
-        co_await acceptor_.async_accept(
-            socket, asio::redirect_error(asio::use_awaitable, ec));
+        co_await acceptor_.async_accept(socket, asio::redirect_error(asio::use_awaitable, ec));
         if (ec) {
             if (ec == asio::error::operation_aborted) break;  // acceptor closed
             spdlog::warn("accept failed error={}", ec.message());
             continue;
         }
         stats_->accepted.fetch_add(1, std::memory_order_relaxed);
-        auto session =
-            std::make_shared<Session>(std::move(socket), handler_, *stats_);
+        auto session = std::make_shared<Session>(std::move(socket), handler_, *stats_);
         asio::co_spawn(
-            runtime_.context(),
-            [session]() -> asio::awaitable<void> { co_await session->run(); },
+            runtime_.context(), [session]() -> asio::awaitable<void> { co_await session->run(); },
             asio::detached);
     }
 }

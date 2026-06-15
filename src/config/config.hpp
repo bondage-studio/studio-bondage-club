@@ -27,9 +27,9 @@ struct ServerConfig {
 // StoreConfig defines a named cache store. The name "default" is reserved.
 struct StoreConfig {
     std::string name;
-    std::string dir;                          // empty -> <CacheConfig.dir>/<name>
-    std::int64_t max_size_bytes = 0;          // 0 -> inherit global
-    std::optional<int> default_ttl_seconds;   // nullopt -> inherit global
+    std::string dir;                         // empty -> <CacheConfig.dir>/<name>
+    std::int64_t max_size_bytes = 0;         // 0 -> inherit global
+    std::optional<int> default_ttl_seconds;  // nullopt -> inherit global
 };
 
 struct CacheConfig {
@@ -81,9 +81,9 @@ struct Config {
     std::string upstream;
     std::string game_server;
     std::string socks5_proxy;
-    bool local_game_server = false;  // first-launch default for the frontend's
-                                     // local/remote game-server switch (a browser
-                                     // localStorage override takes precedence)
+    bool local_game_server = false;        // first-launch default for the frontend's
+                                           // local/remote game-server switch (a browser
+                                           // localStorage override takes precedence)
     std::string game_server_storage_path;  // empty -> <cache.dir>/gameserver
     GameServerConfig game_server_settings;
     CacheConfig cache;

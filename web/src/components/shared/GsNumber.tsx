@@ -6,7 +6,7 @@ export function GsNumber({
   label,
   cfg,
   k,
-  set
+  set,
 }: {
   label: string;
   cfg: GameServerSettings;

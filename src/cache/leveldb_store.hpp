@@ -33,8 +33,8 @@ public:
     std::optional<Metadata> get(const std::string& key) override;
     std::string open_body(const std::string& key) override;
     std::unique_ptr<Writer> new_writer(const std::string& key) override;
-    std::optional<Metadata> update_metadata(
-        const std::string& key, const std::function<Metadata(Metadata)>& fn) override;
+    std::optional<Metadata> update_metadata(const std::string& key,
+                                            const std::function<Metadata(Metadata)>& fn) override;
     void touch(const std::string& key, TimePoint now) override;
     void clear() override;
     Stats stats() override;

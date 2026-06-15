@@ -22,7 +22,12 @@ export function GameSettingsTab({ form, onChange }: Props) {
         <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
           <GsNumber label="Messages / sec" cfg={cfg} k="messageRatePerSec" set={onChange} />
           <GsNumber label="Conns / IP" cfg={cfg} k="ipConnectionLimit" set={onChange} />
-          <GsNumber label="New conns / sec / IP" cfg={cfg} k="ipConnectionRatePerSec" set={onChange} />
+          <GsNumber
+            label="New conns / sec / IP"
+            cfg={cfg}
+            k="ipConnectionRatePerSec"
+            set={onChange}
+          />
         </div>
       </Panel>
       <Panel title="Accounts">
@@ -32,8 +37,18 @@ export function GameSettingsTab({ form, onChange }: Props) {
           <GsNumber label="Login pace (ms)" cfg={cfg} k="loginPaceMs" set={onChange} />
           <GsNumber label="Login queue notice" cfg={cfg} k="loginQueueThreshold" set={onChange} />
           <GsNumber label="PBKDF2 iterations" cfg={cfg} k="pbkdf2Iterations" set={onChange} />
-          <GsNumber label="Reset throttle (ms)" cfg={cfg} k="passwordResetThrottleMs" set={onChange} />
-          <GsNumber label="Relationship delay (ms)" cfg={cfg} k="relationshipDelayMs" set={onChange} />
+          <GsNumber
+            label="Reset throttle (ms)"
+            cfg={cfg}
+            k="passwordResetThrottleMs"
+            set={onChange}
+          />
+          <GsNumber
+            label="Relationship delay (ms)"
+            cfg={cfg}
+            k="relationshipDelayMs"
+            set={onChange}
+          />
         </div>
       </Panel>
       <Panel title="Rooms & text limits">
@@ -45,13 +60,28 @@ export function GameSettingsTab({ form, onChange }: Props) {
           <GsNumber label="Description max len" cfg={cfg} k="descriptionMaxLen" set={onChange} />
           <GsNumber label="Email max len" cfg={cfg} k="emailMaxLen" set={onChange} />
           <GsNumber label="Name max len" cfg={cfg} k="nameMaxLen" set={onChange} />
-          <GsNumber label="Ownership notes max len" cfg={cfg} k="ownershipNotesMaxLen" set={onChange} />
+          <GsNumber
+            label="Ownership notes max len"
+            cfg={cfg}
+            k="ownershipNotesMaxLen"
+            set={onChange}
+          />
         </div>
       </Panel>
       <Panel title="Timers">
         <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @xl:grid-cols-3">
-          <GsNumber label="ServerInfo interval (s)" cfg={cfg} k="serverInfoIntervalSec" set={onChange} />
-          <GsNumber label="Delayed flush (s)" cfg={cfg} k="delayedFlushIntervalSec" set={onChange} />
+          <GsNumber
+            label="ServerInfo interval (s)"
+            cfg={cfg}
+            k="serverInfoIntervalSec"
+            set={onChange}
+          />
+          <GsNumber
+            label="Delayed flush (s)"
+            cfg={cfg}
+            k="delayedFlushIntervalSec"
+            set={onChange}
+          />
         </div>
         <p className="mt-2.5 text-xs text-muted-foreground">
           All values apply live: in-flight connections keep running and pick up the new limits on

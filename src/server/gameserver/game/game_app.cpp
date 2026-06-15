@@ -33,12 +33,13 @@ GameApp::GameApp(boost::asio::any_io_executor ex, net::BlockingPool& blocking,
 
     // After login, ChatRoomManager attaches its event handlers; on disconnect it
     // removes the player from any room before the account is erased.
-    accounts_->set_post_login_hook([this](std::shared_ptr<socketio::Socket> socket,
-                                          std::shared_ptr<OnlineAccount> acc) {
-        chatrooms_->register_handlers(std::move(socket), std::move(acc));
+    accounts_->set_post_login_hook(
+        [this](std::shared_ptr<socketio::Socket> socket, std::shared_ptr<OnlineAccount> acc) {
+            chatrooms_->register_handlers(std::move(socket), std::move(acc));
+        });
+    accounts_->set_disconnect_hook([this](std::shared_ptr<OnlineAccount> acc) {
+        chatrooms_->remove_from_room(std::move(acc));
     });
-    accounts_->set_disconnect_hook(
-        [this](std::shared_ptr<OnlineAccount> acc) { chatrooms_->remove_from_room(std::move(acc)); });
 
     hub_.set_connect_handler([this](std::shared_ptr<socketio::Socket> socket) {
         accounts_->on_socket_connected(std::move(socket));
@@ -48,13 +49,13 @@ GameApp::GameApp(boost::asio::any_io_executor ex, net::BlockingPool& blocking,
 }
 
 void GameApp::update_settings(const config::GameServerConfig& settings) {
-    settings_.store(settings);          // managers read the new snapshot on next use
+    settings_.store(settings);             // managers read the new snapshot on next use
     hub_.set_limits(to_limits(settings));  // transport picks it up per connection/tick
 }
 
 void GameApp::detach_db() {
-    hub_.disconnect_all();   // no game requests should be mid-flight during the move
-    if (db_) db_->close();   // release the LevelDB lock so the dir can be renamed
+    hub_.disconnect_all();  // no game requests should be mid-flight during the move
+    if (db_) db_->close();  // release the LevelDB lock so the dir can be renamed
 }
 
 void GameApp::reopen(const std::string& data_dir) {

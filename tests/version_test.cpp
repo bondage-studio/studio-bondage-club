@@ -9,7 +9,9 @@ using namespace sbc::cache;
 
 namespace {
 
-Url url(const std::string& s) { return Url::parse(s); }
+Url url(const std::string& s) {
+    return Url::parse(s);
+}
 
 }  // namespace
 

@@ -54,8 +54,7 @@ Sha256::~Sha256() {
 
 void Sha256::update(const void* data, std::size_t len) {
     if (len == 0) return;
-    if (!BCRYPT_SUCCESS(BCryptHashData(impl_->hash,
-                                       static_cast<PUCHAR>(const_cast<void*>(data)),
+    if (!BCRYPT_SUCCESS(BCryptHashData(impl_->hash, static_cast<PUCHAR>(const_cast<void*>(data)),
                                        static_cast<ULONG>(len), 0))) {
         throw std::runtime_error("sha256: digest update failed");
     }
@@ -63,8 +62,8 @@ void Sha256::update(const void* data, std::size_t len) {
 
 std::string Sha256::hex() {
     std::array<unsigned char, kDigestLen> digest{};
-    if (!BCRYPT_SUCCESS(BCryptFinishHash(impl_->hash, digest.data(),
-                                         static_cast<ULONG>(digest.size()), 0))) {
+    if (!BCRYPT_SUCCESS(
+            BCryptFinishHash(impl_->hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
         throw std::runtime_error("sha256: digest finalization failed");
     }
     return to_hex(digest.data(), kDigestLen);
@@ -105,7 +104,9 @@ std::string Sha256::hex() {
 
 #endif
 
-void Sha256::update(std::string_view data) { update(data.data(), data.size()); }
+void Sha256::update(std::string_view data) {
+    update(data.data(), data.size());
+}
 
 std::string sha256_hex(std::string_view data) {
     Sha256 h;

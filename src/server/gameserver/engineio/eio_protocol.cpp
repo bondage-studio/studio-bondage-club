@@ -9,7 +9,9 @@ namespace sbc::server::gameserver::engineio {
 
 namespace {
 
-bool is_packet_type(char c) { return c >= '0' && c <= '6'; }
+bool is_packet_type(char c) {
+    return c >= '0' && c <= '6';
+}
 
 }  // namespace
 

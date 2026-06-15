@@ -29,7 +29,7 @@ self.addEventListener("fetch", (event) => {
       redirect: "follow",
       // duplex is required by the spec when body is a ReadableStream
       ...(hasBody && request.body ? { duplex: "half" } : {}),
-    } as RequestInit)
+    } as RequestInit),
   );
 });
 

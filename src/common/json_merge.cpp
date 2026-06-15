@@ -2,8 +2,7 @@
 
 namespace sbc {
 
-void merge_set_field(nlohmann::json& root, const std::string& key,
-                     const nlohmann::json& value) {
+void merge_set_field(nlohmann::json& root, const std::string& key, const nlohmann::json& value) {
     // Fast path: a plain key (no nested path) is assigned literally.
     std::size_t dot = key.find('.');
     if (dot == std::string::npos) {

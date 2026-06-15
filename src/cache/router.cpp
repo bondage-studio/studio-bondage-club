@@ -102,7 +102,9 @@ bool glob_match(const std::string& pattern, const std::string& text) {
     return glob_here(pattern, 0, text, 0);
 }
 
-PolicyRouter::PolicyRouter(const std::vector<CacheRule>& rules) { compiled_ = compile(rules); }
+PolicyRouter::PolicyRouter(const std::vector<CacheRule>& rules) {
+    compiled_ = compile(rules);
+}
 
 std::shared_ptr<const std::vector<PolicyRouter::CompiledRule>> PolicyRouter::compile(
     const std::vector<CacheRule>& rules) {
@@ -117,8 +119,7 @@ std::shared_ptr<const std::vector<PolicyRouter::CompiledRule>> PolicyRouter::com
                 try {
                     cr.path_re.emplace(pat.substr(3), std::regex::ECMAScript);
                 } catch (const std::regex_error& e) {
-                    throw Error("rule[" + std::to_string(i) + "] pathPattern regexp: " +
-                                e.what());
+                    throw Error("rule[" + std::to_string(i) + "] pathPattern regexp: " + e.what());
                 }
             } else {
                 cr.path_glob = pat;

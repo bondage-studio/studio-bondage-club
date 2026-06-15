@@ -17,9 +17,9 @@ struct Request {
     std::string path;       // decoded path component, e.g. "/Assets/foo.js"
     std::string raw_query;  // query string without leading '?'
     HeaderMap headers;
-    std::string body;        // fully-read request body (bounded by MaxBodyBytes)
+    std::string body;            // fully-read request body (bounded by MaxBodyBytes)
     std::string remote_address;  // peer IP
-    unsigned version = 11;   // 11 = HTTP/1.1, 10 = HTTP/1.0
+    unsigned version = 11;       // 11 = HTTP/1.1, 10 = HTTP/1.0
     bool keep_alive = true;
 
     bool is_get() const { return method == "GET"; }

@@ -70,7 +70,8 @@ private:
     nlohmann::json room_data(const ChatRoom& room, std::int64_t source_member);
     nlohmann::json room_properties(const ChatRoom& room, std::int64_t source_member);
     void sync(const ChatRoom& room, std::int64_t source_member);
-    void sync_to_member(const ChatRoom& room, std::int64_t source_member, std::int64_t target_member);
+    void sync_to_member(const ChatRoom& room, std::int64_t source_member,
+                        std::int64_t target_member);
     void sync_member_join(const ChatRoom& room, const OnlineAccount& character);
     void sync_member_leave(const ChatRoom& room, std::int64_t source_member);
     void sync_single(const OnlineAccount& acc, std::int64_t source_member);

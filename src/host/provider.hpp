@@ -47,8 +47,7 @@ struct HomepageDocument {
 class Provider {
 public:
     virtual ~Provider() = default;
-    virtual boost::asio::awaitable<void> serve(server::Request& req,
-                                               server::ResponseWriter& w) = 0;
+    virtual boost::asio::awaitable<void> serve(server::Request& req, server::ResponseWriter& w) = 0;
     virtual RuntimeStatus status() const = 0;
     virtual void close() {}
 };
@@ -57,8 +56,7 @@ public:
 class HomepageProvider {
 public:
     virtual ~HomepageProvider() = default;
-    virtual boost::asio::awaitable<HomepageDocument> fetch_homepage(
-        const server::Request& req) = 0;
+    virtual boost::asio::awaitable<HomepageDocument> fetch_homepage(const server::Request& req) = 0;
 };
 
 // RemoteProxyProvider serves arbitrary remote URLs via the cache path

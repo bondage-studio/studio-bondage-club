@@ -42,7 +42,9 @@ std::string to_upper(std::string s) {
     return s;
 }
 
-bool matches(const std::string& s, const std::regex& re) { return std::regex_match(s, re); }
+bool matches(const std::string& s, const std::regex& re) {
+    return std::regex_match(s, re);
+}
 
 std::string trim_copy(const std::string& s) {
     auto a = s.find_first_not_of(" \t");
@@ -82,8 +84,8 @@ void valid_data(json& a) {
 // AccountPurgeInfo: drop fields the server does not need to keep in memory.
 void purge_info(json& a) {
     for (const char* k : {"Log", "Skill", "Wardrobe", "WardrobeCharacterNames", "ChatSettings",
-                          "VisualSettings", "AudioSettings", "GameplaySettings", "Email", "Password",
-                          "LastLogin", "GhostList", "HiddenItems"}) {
+                          "VisualSettings", "AudioSettings", "GameplaySettings", "Email",
+                          "Password", "LastLogin", "GhostList", "HiddenItems"}) {
         a.erase(k);
     }
 }
@@ -174,8 +176,8 @@ asio::awaitable<void> AccountManager::account_create(std::shared_ptr<socketio::S
     const std::string len = std::to_string(cfg->name_max_len);
     const std::regex name_re("^[a-zA-Z ]{1," + len + "}$");
     const std::regex acct_re("^[a-zA-Z0-9]{1," + len + "}$");
-    if (!matches(name, name_re) || !matches(account_name, acct_re) ||
-        !matches(password, acct_re) || !email_ok(email, cfg->email_max_len)) {
+    if (!matches(name, name_re) || !matches(account_name, acct_re) || !matches(password, acct_re) ||
+        !email_ok(email, cfg->email_max_len)) {
         co_return;
     }
 
@@ -202,7 +204,8 @@ asio::awaitable<void> AccountManager::account_create(std::shared_ptr<socketio::S
     }
 
     std::string upper = to_upper(account_name);
-    bool exists = co_await net::run_blocking(blocking_, [this, upper]() { return db_.account_exists(upper); });
+    bool exists = co_await net::run_blocking(blocking_,
+                                             [this, upper]() { return db_.account_exists(upper); });
     if (exists) {
         socket->emit("CreationResponse", "Account already exists");
         co_return;
@@ -248,8 +251,9 @@ asio::awaitable<void> AccountManager::account_create(std::shared_ptr<socketio::S
     }
     spdlog::info("gameserver: account created {} member={} id={}", upper, member, acc->id);
     on_login(socket, acc);
-    socket->emit("CreationResponse",
-                 json{{"ServerAnswer", "AccountCreated"}, {"OnlineID", acc->id}, {"MemberNumber", member}});
+    socket->emit(
+        "CreationResponse",
+        json{{"ServerAnswer", "AccountCreated"}, {"OnlineID", acc->id}, {"MemberNumber", member}});
     send_server_info(socket);
 }
 
@@ -378,8 +382,8 @@ asio::awaitable<void> AccountManager::account_login_process(
     std::string upper = upper_name;
     json persist = {{"LastLogin", account["LastLogin"]}};
     if (assigned_member) persist["MemberNumber"] = account["MemberNumber"];
-    co_await net::run_blocking(blocking_,
-                               [this, upper, persist]() { db_.update_account_fields(upper, persist); });
+    co_await net::run_blocking(
+        blocking_, [this, upper, persist]() { db_.update_account_fields(upper, persist); });
 
     // LoginResponse carries the full account minus the secret fields.
     json response = account;
@@ -410,8 +414,7 @@ void AccountManager::on_login(std::shared_ptr<socketio::Socket> socket,
     socket->off("AccountLogin");
     std::string id = acc->id;
     socket->on("AccountUpdate", [this, id](const json& data) { account_update(id, data); });
-    socket->on("AccountQuery",
-               [this, socket](const json& data) { account_query(socket, data); });
+    socket->on("AccountQuery", [this, socket](const json& data) { account_query(socket, data); });
     socket->on("AccountBeep", [this, id](const json& data) { account_beep(id, data); });
     socket->on("AccountOwnership", [this, id](const json& data) { account_ownership(id, data); });
     socket->on("AccountLovership", [this, id](const json& data) { account_lovership(id, data); });
@@ -428,13 +431,28 @@ void AccountManager::on_login(std::shared_ptr<socketio::Socket> socket,
 void AccountManager::account_update(const std::string& socket_id, json data) {
     if (!data.is_object()) return;
 
-    static const std::array<const char*, 22> immutable = {
-        "Name",        "AccountName",  "Password",  "Email",
-        "Creation",    "LastLogin",    "Pose",      "ActivePose",
-        "ChatRoom",    "ID",           "Socket",    "Inventory",
-        "_id",         "MemberNumber", "Environment", "Ownership",
-        "Lovership",   "Difficulty",   "AssetFamily", "DelayedAppearanceUpdate",
-        "DelayedSkillUpdate", "DelayedGameUpdate"};
+    static const std::array<const char*, 22> immutable = {"Name",
+                                                          "AccountName",
+                                                          "Password",
+                                                          "Email",
+                                                          "Creation",
+                                                          "LastLogin",
+                                                          "Pose",
+                                                          "ActivePose",
+                                                          "ChatRoom",
+                                                          "ID",
+                                                          "Socket",
+                                                          "Inventory",
+                                                          "_id",
+                                                          "MemberNumber",
+                                                          "Environment",
+                                                          "Ownership",
+                                                          "Lovership",
+                                                          "Difficulty",
+                                                          "AssetFamily",
+                                                          "DelayedAppearanceUpdate",
+                                                          "DelayedSkillUpdate",
+                                                          "DelayedGameUpdate"};
 
     std::string upper;
     json to_persist;
@@ -479,8 +497,9 @@ void AccountManager::account_update(const std::string& socket_id, json data) {
     asio::co_spawn(
         ex_,
         [this, upper, to_persist]() -> asio::awaitable<void> {
-            co_await net::run_blocking(
-                blocking_, [this, upper, to_persist]() { db_.update_account_fields(upper, to_persist); });
+            co_await net::run_blocking(blocking_, [this, upper, to_persist]() {
+                db_.update_account_fields(upper, to_persist);
+            });
         },
         asio::detached);
 }
@@ -514,10 +533,9 @@ void AccountManager::account_query(std::shared_ptr<socketio::Socket> socket, jso
             std::vector<std::int64_t> indexed;
             for (auto& [oid, other] : gs_.by_socket) {
                 if (other->environment() != my_env) continue;
-                bool is_owned = other->data.contains("Ownership") &&
-                                other->data["Ownership"].is_object() &&
-                                other->data["Ownership"].value("MemberNumber", std::int64_t{-1}) ==
-                                    my_member;
+                bool is_owned =
+                    other->data.contains("Ownership") && other->data["Ownership"].is_object() &&
+                    other->data["Ownership"].value("MemberNumber", std::int64_t{-1}) == my_member;
                 bool is_lover = false;
                 if (other->data.contains("Lovership") && other->data["Lovership"].is_array()) {
                     for (const auto& l : other->data["Lovership"])
@@ -572,8 +590,9 @@ void AccountManager::persist_fields(const std::string& upper_name, json fields) 
     asio::co_spawn(
         ex_,
         [this, upper_name, fields]() -> asio::awaitable<void> {
-            co_await net::run_blocking(
-                blocking_, [this, upper_name, fields]() { db_.update_account_fields(upper_name, fields); });
+            co_await net::run_blocking(blocking_, [this, upper_name, fields]() {
+                db_.update_account_fields(upper_name, fields);
+            });
         },
         asio::detached);
 }
@@ -599,11 +618,13 @@ json source_char_dict(const OnlineAccount& acc) {
 }  // namespace
 
 void AccountManager::account_ownership(const std::string& socket_id, json data) {
-    if (!data.is_object() || !data.contains("MemberNumber") || !data["MemberNumber"].is_number_integer())
+    if (!data.is_object() || !data.contains("MemberNumber") ||
+        !data["MemberNumber"].is_number_integer())
         return;
     std::int64_t target_member = data["MemberNumber"].get<std::int64_t>();
-    std::string action =
-        (data.contains("Action") && data["Action"].is_string()) ? data["Action"].get<std::string>() : "";
+    std::string action = (data.contains("Action") && data["Action"].is_string())
+                             ? data["Action"].get<std::string>()
+                             : "";
     const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;
 
     std::lock_guard<std::mutex> lock(gs_.mu);
@@ -621,14 +642,17 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
             std::int64_t stage = o["Stage"].get<std::int64_t>();
             std::int64_t start = o["Start"].get<std::int64_t>();
             if ((stage == 0 || start + kDelay <= now_ms()) && action == "Break") {
-                bool diff_level = acc->data.contains("Difficulty") && acc->data["Difficulty"].is_object() &&
+                bool diff_level = acc->data.contains("Difficulty") &&
+                                  acc->data["Difficulty"].is_object() &&
                                   acc->data["Difficulty"].contains("Level") &&
                                   acc->data["Difficulty"]["Level"].is_number_integer();
-                std::int64_t level = diff_level ? acc->data["Difficulty"]["Level"].get<std::int64_t>() : 0;
+                std::int64_t level =
+                    diff_level ? acc->data["Difficulty"]["Level"].get<std::int64_t>() : 0;
                 if (!diff_level || level <= 2 || stage == 0) {
                     acc->data["Owner"] = "";
                     acc->data["Ownership"] = json(nullptr);
-                    persist_fields(acc->account_name(), json{{"Ownership", json(nullptr)}, {"Owner", ""}});
+                    persist_fields(acc->account_name(),
+                                   json{{"Ownership", json(nullptr)}, {"Owner", ""}});
                     acc->socket->emit("AccountOwnership", json{{"ClearOwnership", true}});
                     return;
                 }
@@ -653,32 +677,35 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
         asio::co_spawn(
             ex_,
             [this, target_member, my, room_ptr, acc]() -> asio::awaitable<void> {
-                auto result = co_await net::run_blocking(
-                    blocking_, [this, target_member]() { return db_.get_account_by_member(target_member); });
+                auto result = co_await net::run_blocking(blocking_, [this, target_member]() {
+                    return db_.get_account_by_member(target_member);
+                });
                 std::lock_guard<std::mutex> lk(gs_.mu);
                 // Ensure the acting account is still in this room.
                 if (acc->chat_room != room_ptr) co_return;
                 ChatRoom& rm = *room_ptr;
-                bool owned_by_me = result && result->contains("Ownership") &&
-                                   (*result)["Ownership"].is_object() &&
-                                   (*result)["Ownership"].value("MemberNumber", std::int64_t{-1}) == my;
+                bool owned_by_me =
+                    result && result->contains("Ownership") && (*result)["Ownership"].is_object() &&
+                    (*result)["Ownership"].value("MemberNumber", std::int64_t{-1}) == my;
                 if (owned_by_me) {
-                    persist_member_fields(target_member, json{{"Owner", ""}, {"Ownership", json(nullptr)}});
+                    persist_member_fields(target_member,
+                                          json{{"Owner", ""}, {"Ownership", json(nullptr)}});
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(rm, my, "ReleaseSuccess", "ServerMessage", json(my),
-                                                      json(nullptr));
+                        chatrooms_->broadcast_message(rm, my, "ReleaseSuccess", "ServerMessage",
+                                                      json(my), json(nullptr));
                     auto tit = gs_.by_member.find(target_member);
                     if (tit != gs_.by_member.end()) {
                         auto tgt = tit->second;
                         tgt->data["Owner"] = "";
                         tgt->data["Ownership"] = json(nullptr);
-                        if (tgt->socket) tgt->socket->emit("AccountOwnership", json{{"ClearOwnership", true}});
+                        if (tgt->socket)
+                            tgt->socket->emit("AccountOwnership", json{{"ClearOwnership", true}});
                         if (tgt->chat_room && chatrooms_) {
                             chatrooms_->sync_character(*tgt->chat_room, tgt->member_number(),
                                                        tgt->member_number());
-                            chatrooms_->broadcast_message(*tgt->chat_room, tgt->member_number(),
-                                                          "ReleaseByOwner", "ServerMessage",
-                                                          json(tgt->member_number()), json(nullptr));
+                            chatrooms_->broadcast_message(
+                                *tgt->chat_room, tgt->member_number(), "ReleaseByOwner",
+                                "ServerMessage", json(tgt->member_number()), json(nullptr));
                         }
                     }
                 } else if (chatrooms_) {
@@ -700,15 +727,18 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
         target->data["Ownership"].is_object() &&
         target->data["Ownership"].value("Stage", std::int64_t{-1}) == 1 &&
         target->data["Ownership"].value("MemberNumber", std::int64_t{-1}) == my) {
-        if (data.contains("Notes") && data["Notes"].is_string() && !data["Notes"].get<std::string>().empty())
+        if (data.contains("Notes") && data["Notes"].is_string() &&
+            !data["Notes"].get<std::string>().empty())
             target->data["Ownership"]["Notes"] = data["Notes"].get<std::string>().substr(
                 0, static_cast<std::size_t>(settings_.snapshot()->ownership_notes_max_len));
         else
             target->data["Ownership"].erase("Notes");
-        json o = {{"Ownership", target->data["Ownership"]}, {"Owner", target->data.value("Owner", "")}};
+        json o = {{"Ownership", target->data["Ownership"]},
+                  {"Owner", target->data.value("Owner", "")}};
         persist_fields(target->account_name(), o);
         if (target->socket) target->socket->emit("AccountOwnership", o);
-        if (chatrooms_) chatrooms_->sync_character(room, target->member_number(), target->member_number());
+        if (chatrooms_)
+            chatrooms_->sync_character(room, target->member_number(), target->member_number());
         return;
     }
 
@@ -722,20 +752,25 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
         target->data["Owner"] = "";
         target->data["Ownership"] = json(nullptr);
         persist_fields(target->account_name(), json{{"Ownership", json(nullptr)}, {"Owner", ""}});
-        if (target->socket) target->socket->emit("AccountOwnership", json{{"ClearOwnership", true}});
-        json dict = json::array(
-            {json{{"Tag", "SourceCharacter"}, {"Text", acc->data.value("Name", std::string{})}, {"MemberNumber", my}},
-             json{{"Tag", "TargetCharacter"}, {"Text", target->data.value("Name", std::string{})},
-                  {"MemberNumber", target->member_number()}}});
+        if (target->socket)
+            target->socket->emit("AccountOwnership", json{{"ClearOwnership", true}});
+        json dict = json::array({json{{"Tag", "SourceCharacter"},
+                                      {"Text", acc->data.value("Name", std::string{})},
+                                      {"MemberNumber", my}},
+                                 json{{"Tag", "TargetCharacter"},
+                                      {"Text", target->data.value("Name", std::string{})},
+                                      {"MemberNumber", target->member_number()}}});
         if (chatrooms_)
             chatrooms_->broadcast_message(room, my, is_trial ? "EndOwnershipTrial" : "EndOwnership",
                                           "ServerMessage", json(nullptr), dict);
-        if (chatrooms_) chatrooms_->sync_character(room, target->member_number(), target->member_number());
+        if (chatrooms_)
+            chatrooms_->sync_character(room, target->member_number(), target->member_number());
         return;
     }
 
-    bool my_own_is_target = acc->data.contains("Ownership") && acc->data["Ownership"].is_object() &&
-                            acc->data["Ownership"].value("MemberNumber", std::int64_t{-2}) == target_member;
+    bool my_own_is_target =
+        acc->data.contains("Ownership") && acc->data["Ownership"].is_object() &&
+        acc->data["Ownership"].value("MemberNumber", std::int64_t{-2}) == target_member;
 
     // Dominant proposes (cannot if already owner of target, on blacklist, or NPC-owned).
     if (!my_own_is_target) {
@@ -750,13 +785,16 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
                     if (my != target_member) {
                         if (action == "Propose") {
                             target->data["Owner"] = "";
-                            target->data["Ownership"] = json{{"StartTrialOfferedByMemberNumber", my}};
+                            target->data["Ownership"] =
+                                json{{"StartTrialOfferedByMemberNumber", my}};
                             if (chatrooms_)
-                                chatrooms_->broadcast_message(room, my, "OfferStartTrial", "ServerMessage",
-                                                              json(target_member), source_char_dict(*acc));
+                                chatrooms_->broadcast_message(room, my, "OfferStartTrial",
+                                                              "ServerMessage", json(target_member),
+                                                              source_char_dict(*acc));
                         } else {
                             acc->socket->emit("AccountOwnership",
-                                              json{{"MemberNumber", target_member}, {"Result", "CanOfferStartTrial"}});
+                                              json{{"MemberNumber", target_member},
+                                                   {"Result", "CanOfferStartTrial"}});
                         }
                     }
                 }
@@ -771,11 +809,12 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
                     if (action == "Propose") {
                         target->data["Ownership"]["EndTrialOfferedByMemberNumber"] = my;
                         if (chatrooms_)
-                            chatrooms_->broadcast_message(room, my, "OfferEndTrial", "ServerMessage",
-                                                          json(nullptr), source_char_dict(*acc));
+                            chatrooms_->broadcast_message(room, my, "OfferEndTrial",
+                                                          "ServerMessage", json(nullptr),
+                                                          source_char_dict(*acc));
                     } else {
-                        acc->socket->emit("AccountOwnership",
-                                          json{{"MemberNumber", target_member}, {"Result", "CanOfferEndTrial"}});
+                        acc->socket->emit("AccountOwnership", json{{"MemberNumber", target_member},
+                                                                   {"Result", "CanOfferEndTrial"}});
                     }
                 }
             }
@@ -792,44 +831,48 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
             if (mo.value("StartTrialOfferedByMemberNumber", std::int64_t{-1}) == target_member) {
                 if (action == "Accept") {
                     acc->data["Owner"] = "";
-                    acc->data["Ownership"] = json{{"MemberNumber", target_member},
-                                                  {"Name", target->data.value("Name", std::string{})},
-                                                  {"Start", now_ms()},
-                                                  {"Stage", 0}};
+                    acc->data["Ownership"] =
+                        json{{"MemberNumber", target_member},
+                             {"Name", target->data.value("Name", std::string{})},
+                             {"Start", now_ms()},
+                             {"Stage", 0}};
                     persist_fields(acc->account_name(),
                                    json{{"Ownership", acc->data["Ownership"]}, {"Owner", ""}});
                     acc->socket->emit("AccountOwnership",
                                       json{{"Ownership", acc->data["Ownership"]}, {"Owner", ""}});
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "StartTrial", "ServerMessage", json(nullptr),
-                                                      source_char_dict(*acc));
+                        chatrooms_->broadcast_message(room, my, "StartTrial", "ServerMessage",
+                                                      json(nullptr), source_char_dict(*acc));
                     if (chatrooms_) chatrooms_->sync_character(room, my, my);
                 } else {
-                    acc->socket->emit("AccountOwnership",
-                                      json{{"MemberNumber", target_member}, {"Result", "CanStartTrial"}});
+                    acc->socket->emit("AccountOwnership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanStartTrial"}});
                 }
             }
             // Step 4/4: accept the full collar.
             if (acc->data["Ownership"].is_object() &&
                 acc->data["Ownership"].value("Stage", std::int64_t{-1}) == 0 &&
-                acc->data["Ownership"].value("EndTrialOfferedByMemberNumber", std::int64_t{-1}) == target_member) {
+                acc->data["Ownership"].value("EndTrialOfferedByMemberNumber", std::int64_t{-1}) ==
+                    target_member) {
                 if (action == "Accept") {
                     acc->data["Owner"] = target->data.value("Name", std::string{});
-                    acc->data["Ownership"] = json{{"MemberNumber", target_member},
-                                                  {"Name", target->data.value("Name", std::string{})},
-                                                  {"Start", now_ms()},
-                                                  {"Stage", 1}};
-                    persist_fields(acc->account_name(),
-                                   json{{"Ownership", acc->data["Ownership"]}, {"Owner", acc->data["Owner"]}});
-                    acc->socket->emit("AccountOwnership",
-                                      json{{"Ownership", acc->data["Ownership"]}, {"Owner", acc->data["Owner"]}});
+                    acc->data["Ownership"] =
+                        json{{"MemberNumber", target_member},
+                             {"Name", target->data.value("Name", std::string{})},
+                             {"Start", now_ms()},
+                             {"Stage", 1}};
+                    persist_fields(acc->account_name(), json{{"Ownership", acc->data["Ownership"]},
+                                                             {"Owner", acc->data["Owner"]}});
+                    acc->socket->emit(
+                        "AccountOwnership",
+                        json{{"Ownership", acc->data["Ownership"]}, {"Owner", acc->data["Owner"]}});
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "EndTrial", "ServerMessage", json(nullptr),
-                                                      source_char_dict(*acc));
+                        chatrooms_->broadcast_message(room, my, "EndTrial", "ServerMessage",
+                                                      json(nullptr), source_char_dict(*acc));
                     if (chatrooms_) chatrooms_->sync_character(room, my, my);
                 } else {
-                    acc->socket->emit("AccountOwnership",
-                                      json{{"MemberNumber", target_member}, {"Result", "CanEndTrial"}});
+                    acc->socket->emit("AccountOwnership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanEndTrial"}});
                 }
             }
         }
@@ -837,11 +880,13 @@ void AccountManager::account_ownership(const std::string& socket_id, json data) 
 }
 
 void AccountManager::account_lovership(const std::string& socket_id, json data) {
-    if (!data.is_object() || !data.contains("MemberNumber") || !data["MemberNumber"].is_number_integer())
+    if (!data.is_object() || !data.contains("MemberNumber") ||
+        !data["MemberNumber"].is_number_integer())
         return;
     std::int64_t target_member = data["MemberNumber"].get<std::int64_t>();
-    std::string action =
-        (data.contains("Action") && data["Action"].is_string()) ? data["Action"].get<std::string>() : "";
+    std::string action = (data.contains("Action") && data["Action"].is_string())
+                             ? data["Action"].get<std::string>()
+                             : "";
     const std::int64_t kDelay = settings_.snapshot()->relationship_delay_ms;
 
     // Strips offer/dating bookkeeping then persists the lovership by member number.
@@ -873,7 +918,10 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
         for (int i = 0; i < static_cast<int>(lov.size()); ++i) {
             const auto& l = lov[i];
             if (l.contains("MemberNumber") && l["MemberNumber"].is_number_integer()) {
-                if (l["MemberNumber"].get<std::int64_t>() == target_member) { al = i; break; }
+                if (l["MemberNumber"].get<std::int64_t>() == target_member) {
+                    al = i;
+                    break;
+                }
             } else if (l.contains("Name") && l["Name"].is_string() && data.contains("Name") &&
                        data["Name"].is_string() && l["Name"] == data["Name"]) {
                 al = i;
@@ -889,15 +937,20 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                 asio::co_spawn(
                     ex_,
                     [this, target_member, my, acc, update_lovership]() -> asio::awaitable<void> {
-                        auto result = co_await net::run_blocking(blocking_, [this, target_member]() {
-                            return db_.get_account_by_member(target_member);
-                        });
+                        auto result =
+                            co_await net::run_blocking(blocking_, [this, target_member]() {
+                                return db_.get_account_by_member(target_member);
+                            });
                         std::lock_guard<std::mutex> lk(gs_.mu);
-                        if (result && result->contains("Lovership") && (*result)["Lovership"].is_array()) {
+                        if (result && result->contains("Lovership") &&
+                            (*result)["Lovership"].is_array()) {
                             json p = (*result)["Lovership"];
                             int tl = -1;
                             for (int i = 0; i < static_cast<int>(p.size()); ++i)
-                                if (p[i].value("MemberNumber", std::int64_t{-1}) == my) { tl = i; break; }
+                                if (p[i].value("MemberNumber", std::int64_t{-1}) == my) {
+                                    tl = i;
+                                    break;
+                                }
                             if (tl >= 0) {
                                 p.erase(tl);
                                 auto oit = gs_.by_member.find(target_member);
@@ -905,9 +958,11 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                                     auto other = oit->second;
                                     other->data["Lovership"] = p;
                                     if (other->socket)
-                                        other->socket->emit("AccountLovership", json{{"Lovership", p}});
+                                        other->socket->emit("AccountLovership",
+                                                            json{{"Lovership", p}});
                                     if (other->chat_room && chatrooms_)
-                                        chatrooms_->sync_character(*other->chat_room, other->member_number(),
+                                        chatrooms_->sync_character(*other->chat_room,
+                                                                   other->member_number(),
                                                                    other->member_number());
                                 }
                                 update_lovership(p, target_member, nullptr, false);
@@ -919,7 +974,8 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                             acc->data["Lovership"] = json::array();
                         } else {
                             for (int i = static_cast<int>(lv.size()) - 1; i >= 0; --i)
-                                if (lv[i].value("MemberNumber", std::int64_t{-1}) == target_member) {
+                                if (lv[i].value("MemberNumber", std::int64_t{-1}) ==
+                                    target_member) {
                                     lv.erase(i);
                                     break;
                                 }
@@ -946,11 +1002,12 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
     auto lover_index = [](const json& lovership, std::int64_t member) {
         for (int i = 0; i < static_cast<int>(lovership.size()); ++i) {
             const auto& l = lovership[i];
-            std::int64_t key = l.contains("MemberNumber") && l["MemberNumber"].is_number_integer()
-                                   ? l["MemberNumber"].get<std::int64_t>()
-                                   : (l.contains("BeginDatingOfferedByMemberNumber")
-                                          ? l["BeginDatingOfferedByMemberNumber"].get<std::int64_t>()
-                                          : -1);
+            std::int64_t key =
+                l.contains("MemberNumber") && l["MemberNumber"].is_number_integer()
+                    ? l["MemberNumber"].get<std::int64_t>()
+                    : (l.contains("BeginDatingOfferedByMemberNumber")
+                           ? l["BeginDatingOfferedByMemberNumber"].get<std::int64_t>()
+                           : -1);
             if (key == member) return i;
         }
         return -1;
@@ -978,8 +1035,8 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                         chatrooms_->broadcast_message(room, my, "OfferBeginDating", "ServerMessage",
                                                       json(target_member), source_char_dict(*acc));
                 } else {
-                    acc->socket->emit("AccountLovership",
-                                      json{{"MemberNumber", target_member}, {"Result", "CanOfferBeginDating"}});
+                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanOfferBeginDating"}});
                 }
             }
             // Step 3/6: propose engagement after the delay.
@@ -990,11 +1047,13 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                 if (action == "Propose") {
                     t_lov[tl]["BeginEngagementOfferedByMemberNumber"] = my;
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "OfferBeginEngagement", "ServerMessage",
-                                                      json(target_member), source_char_dict(*acc));
+                        chatrooms_->broadcast_message(room, my, "OfferBeginEngagement",
+                                                      "ServerMessage", json(target_member),
+                                                      source_char_dict(*acc));
                 } else {
-                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
-                                                              {"Result", "CanOfferBeginEngagement"}});
+                    acc->socket->emit("AccountLovership",
+                                      json{{"MemberNumber", target_member},
+                                           {"Result", "CanOfferBeginEngagement"}});
                 }
             }
             // Step 5/6: propose wedding after the delay.
@@ -1005,11 +1064,12 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
                 if (action == "Propose") {
                     t_lov[tl]["BeginWeddingOfferedByMemberNumber"] = my;
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "OfferBeginWedding", "ServerMessage",
-                                                      json(target_member), source_char_dict(*acc));
+                        chatrooms_->broadcast_message(room, my, "OfferBeginWedding",
+                                                      "ServerMessage", json(target_member),
+                                                      source_char_dict(*acc));
                 } else {
-                    acc->socket->emit("AccountLovership",
-                                      json{{"MemberNumber", target_member}, {"Result", "CanOfferBeginWedding"}});
+                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanOfferBeginWedding"}});
                 }
             }
             break;
@@ -1031,62 +1091,97 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
             auto dict = [&]() {
                 return json::array(
                     {json{{"Tag", "SourceCharacter"}, {"Text", my_name}, {"MemberNumber", my}},
-                     json{{"Tag", "TargetCharacter"}, {"Text", t_name}, {"MemberNumber", target_member}}});
+                     json{{"Tag", "TargetCharacter"},
+                          {"Text", t_name},
+                          {"MemberNumber", target_member}}});
             };
 
             // Step 2/6: accept to start dating.
-            if (my_lov[al].value("BeginDatingOfferedByMemberNumber", std::int64_t{-1}) == target_member &&
+            if (my_lov[al].value("BeginDatingOfferedByMemberNumber", std::int64_t{-1}) ==
+                    target_member &&
                 (static_cast<int>(t_lov.size()) < 5 || tl >= 0)) {
                 if (action == "Accept") {
-                    my_lov[al] = json{{"MemberNumber", target_member}, {"Name", t_name}, {"Start", now_ms()}, {"Stage", 0}};
-                    json entry = {{"MemberNumber", my}, {"Name", my_name}, {"Start", now_ms()}, {"Stage", 0}};
-                    if (tl >= 0) t_lov[tl] = entry; else t_lov.push_back(entry);
+                    my_lov[al] = json{{"MemberNumber", target_member},
+                                      {"Name", t_name},
+                                      {"Start", now_ms()},
+                                      {"Stage", 0}};
+                    json entry = {
+                        {"MemberNumber", my}, {"Name", my_name}, {"Start", now_ms()}, {"Stage", 0}};
+                    if (tl >= 0)
+                        t_lov[tl] = entry;
+                    else
+                        t_lov.push_back(entry);
                     acc->data["Lovership"] = update_lovership(my_lov, my, acc->socket, true);
-                    room_acc->data["Lovership"] = update_lovership(t_lov, target_member, room_acc->socket, true);
+                    room_acc->data["Lovership"] =
+                        update_lovership(t_lov, target_member, room_acc->socket, true);
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "BeginDating", "ServerMessage", json(nullptr), dict());
+                        chatrooms_->broadcast_message(room, my, "BeginDating", "ServerMessage",
+                                                      json(nullptr), dict());
                     if (chatrooms_) {
                         chatrooms_->sync_character(room, my, my);
                         chatrooms_->sync_character(room, my, target_member);
                     }
                 } else {
-                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member}, {"Result", "CanBeginDating"}});
+                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanBeginDating"}});
                 }
             }
             // Step 4/6: accept engagement.
             else if (my_lov[al].value("Stage", std::int64_t{-1}) == 0 &&
-                     my_lov[al].value("BeginEngagementOfferedByMemberNumber", std::int64_t{-1}) == target_member) {
+                     my_lov[al].value("BeginEngagementOfferedByMemberNumber", std::int64_t{-1}) ==
+                         target_member) {
                 if (action == "Accept") {
-                    my_lov[al] = json{{"MemberNumber", target_member}, {"Name", t_name}, {"Start", now_ms()}, {"Stage", 1}};
-                    if (tl >= 0) t_lov[tl] = json{{"MemberNumber", my}, {"Name", my_name}, {"Start", now_ms()}, {"Stage", 1}};
+                    my_lov[al] = json{{"MemberNumber", target_member},
+                                      {"Name", t_name},
+                                      {"Start", now_ms()},
+                                      {"Stage", 1}};
+                    if (tl >= 0)
+                        t_lov[tl] = json{{"MemberNumber", my},
+                                         {"Name", my_name},
+                                         {"Start", now_ms()},
+                                         {"Stage", 1}};
                     acc->data["Lovership"] = update_lovership(my_lov, my, acc->socket, true);
-                    room_acc->data["Lovership"] = update_lovership(t_lov, target_member, room_acc->socket, true);
+                    room_acc->data["Lovership"] =
+                        update_lovership(t_lov, target_member, room_acc->socket, true);
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "BeginEngagement", "ServerMessage", json(nullptr), dict());
+                        chatrooms_->broadcast_message(room, my, "BeginEngagement", "ServerMessage",
+                                                      json(nullptr), dict());
                     if (chatrooms_) {
                         chatrooms_->sync_character(room, my, my);
                         chatrooms_->sync_character(room, my, target_member);
                     }
                 } else {
-                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member}, {"Result", "CanBeginEngagement"}});
+                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanBeginEngagement"}});
                 }
             }
             // Step 6/6: accept wedding.
             else if (my_lov[al].value("Stage", std::int64_t{-1}) == 1 &&
-                     my_lov[al].value("BeginWeddingOfferedByMemberNumber", std::int64_t{-1}) == target_member) {
+                     my_lov[al].value("BeginWeddingOfferedByMemberNumber", std::int64_t{-1}) ==
+                         target_member) {
                 if (action == "Accept") {
-                    my_lov[al] = json{{"MemberNumber", target_member}, {"Name", t_name}, {"Start", now_ms()}, {"Stage", 2}};
-                    if (tl >= 0) t_lov[tl] = json{{"MemberNumber", my}, {"Name", my_name}, {"Start", now_ms()}, {"Stage", 2}};
+                    my_lov[al] = json{{"MemberNumber", target_member},
+                                      {"Name", t_name},
+                                      {"Start", now_ms()},
+                                      {"Stage", 2}};
+                    if (tl >= 0)
+                        t_lov[tl] = json{{"MemberNumber", my},
+                                         {"Name", my_name},
+                                         {"Start", now_ms()},
+                                         {"Stage", 2}};
                     acc->data["Lovership"] = update_lovership(my_lov, my, acc->socket, true);
-                    room_acc->data["Lovership"] = update_lovership(t_lov, target_member, room_acc->socket, true);
+                    room_acc->data["Lovership"] =
+                        update_lovership(t_lov, target_member, room_acc->socket, true);
                     if (chatrooms_)
-                        chatrooms_->broadcast_message(room, my, "BeginWedding", "ServerMessage", json(nullptr), dict());
+                        chatrooms_->broadcast_message(room, my, "BeginWedding", "ServerMessage",
+                                                      json(nullptr), dict());
                     if (chatrooms_) {
                         chatrooms_->sync_character(room, my, my);
                         chatrooms_->sync_character(room, my, target_member);
                     }
                 } else {
-                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member}, {"Result", "CanBeginWedding"}});
+                    acc->socket->emit("AccountLovership", json{{"MemberNumber", target_member},
+                                                               {"Result", "CanBeginWedding"}});
                 }
             }
             break;
@@ -1095,7 +1190,8 @@ void AccountManager::account_lovership(const std::string& socket_id, json data) 
 }
 
 void AccountManager::account_beep(const std::string& socket_id, json data) {
-    if (!data.is_object() || !data.contains("MemberNumber") || !data["MemberNumber"].is_number_integer())
+    if (!data.is_object() || !data.contains("MemberNumber") ||
+        !data["MemberNumber"].is_number_integer())
         return;
     std::int64_t target = data["MemberNumber"].get<std::int64_t>();
     std::string beep_type = (data.contains("BeepType") && data["BeepType"].is_string())
@@ -1117,18 +1213,21 @@ void AccountManager::account_beep(const std::string& socket_id, json data) {
         bool other_friends_me =
             has_member(other->data.value("FriendList", json::array()), me->member_number());
         json oown = other->data.value("Ownership", json{});
-        bool i_own_other = oown.is_object() && oown.value("MemberNumber", std::int64_t{-1}) ==
-                                                   me->member_number();
+        bool i_own_other =
+            oown.is_object() && oown.value("MemberNumber", std::int64_t{-1}) == me->member_number();
         if (!other_friends_me && !i_own_other && beep_type != "Leash") return;
 
         beep["MemberNumber"] = me->member_number();
         beep["MemberName"] = me->data.value("Name", std::string{});
         bool hide_room = !me->chat_room || is_secret;
-        beep["ChatRoomSpace"] = hide_room ? json(nullptr) : me->chat_room->data.value("Space", json(nullptr));
-        beep["ChatRoomName"] = hide_room ? json(nullptr) : me->chat_room->data.value("Name", json(nullptr));
-        beep["Private"] = hide_room ? json(nullptr)
-                                    : json(!has_str(me->chat_room->data.value("Visibility", json::array()),
-                                                    "All"));
+        beep["ChatRoomSpace"] =
+            hide_room ? json(nullptr) : me->chat_room->data.value("Space", json(nullptr));
+        beep["ChatRoomName"] =
+            hide_room ? json(nullptr) : me->chat_room->data.value("Name", json(nullptr));
+        beep["Private"] =
+            hide_room
+                ? json(nullptr)
+                : json(!has_str(me->chat_room->data.value("Visibility", json::array()), "All"));
         beep["BeepType"] = beep_type.empty() ? json(nullptr) : json(beep_type);
         if (data.contains("Message")) beep["Message"] = data["Message"];
         target_socket = other->socket;
@@ -1206,7 +1305,8 @@ void AccountManager::account_update_email(std::shared_ptr<socketio::Socket> sock
                 return s;
             };
             if (!existing.empty() && lower(trim_copy(email_old)) != lower(trim_copy(existing))) {
-                socket->emit("AccountQueryResult", json{{"Query", "EmailUpdate"}, {"Result", false}});
+                socket->emit("AccountQueryResult",
+                             json{{"Query", "EmailUpdate"}, {"Result", false}});
                 co_return;
             }
             co_await net::run_blocking(blocking_, [this, upper, email_new]() {
@@ -1251,8 +1351,8 @@ asio::awaitable<void> AccountManager::password_reset(std::shared_ptr<socketio::S
     socket->emit("PasswordResetResponse", "EmailSent");
 }
 
-asio::awaitable<void> AccountManager::password_reset_process(std::shared_ptr<socketio::Socket> socket,
-                                                             json data) {
+asio::awaitable<void> AccountManager::password_reset_process(
+    std::shared_ptr<socketio::Socket> socket, json data) {
     auto invalid = [&]() { socket->emit("PasswordResetResponse", "InvalidPasswordResetInfo"); };
     if (!data.is_object() || !data.contains("AccountName") || !data["AccountName"].is_string() ||
         !data.contains("ResetNumber") || !data["ResetNumber"].is_string() ||
@@ -1313,8 +1413,9 @@ void AccountManager::remove_account(const std::string& socket_id) {
         asio::co_spawn(
             ex_,
             [this, upper, persist]() -> asio::awaitable<void> {
-                co_await net::run_blocking(
-                    blocking_, [this, upper, persist]() { db_.update_account_fields(upper, persist); });
+                co_await net::run_blocking(blocking_, [this, upper, persist]() {
+                    db_.update_account_fields(upper, persist);
+                });
             },
             asio::detached);
     }
@@ -1367,8 +1468,9 @@ void AccountManager::flush_delayed_updates() {
         asio::co_spawn(
             ex_,
             [this, upper, persist]() -> asio::awaitable<void> {
-                co_await net::run_blocking(
-                    blocking_, [this, upper, persist]() { db_.update_account_fields(upper, persist); });
+                co_await net::run_blocking(blocking_, [this, upper, persist]() {
+                    db_.update_account_fields(upper, persist);
+                });
             },
             asio::detached);
     }

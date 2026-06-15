@@ -17,7 +17,7 @@ export function WindowPortal({
   width = 800,
   height = 600,
   onClose,
-  children
+  children,
 }: WindowPortalProps) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
 
@@ -27,7 +27,7 @@ export function WindowPortal({
     const child = window.open(
       "",
       "studio-config-popout",
-      `popup=yes,width=${width},height=${height},left=${left},top=${top}`
+      `popup=yes,width=${width},height=${height},left=${left},top=${top}`,
     );
     if (!child) {
       // Popup blocked — fall back to the in-page window.

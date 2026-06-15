@@ -41,7 +41,7 @@ export function registerMenuCommand(
   scriptName: string,
   label: string,
   callback: (event?: Event) => void,
-  accessKey?: string
+  accessKey?: string,
 ): string {
   const reg = getMenuRegistry();
   const id = `${scriptId}:${reg.seq++}`;

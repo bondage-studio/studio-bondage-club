@@ -27,10 +27,7 @@ function clone(value: unknown): unknown {
   }
 }
 
-export function createValueStore(
-  scriptId: string,
-  initial: Record<string, unknown>
-): ValueStore {
+export function createValueStore(scriptId: string, initial: Record<string, unknown>): ValueStore {
   const cache = new Map<string, unknown>(Object.entries(initial));
 
   // Per-script write chain: set-then-delete reaches the server in call order;
@@ -38,14 +35,13 @@ export function createValueStore(
   // intended value for the session (LevelDB is durable once a PUT lands).
   let tail: Promise<void> = Promise.resolve();
   function enqueue(op: () => Promise<unknown>): Promise<void> {
-    tail = tail.then(
-      () =>
-        op().then(
-          () => undefined,
-          (err) => {
-            console.error(`[userscript ${scriptId}] value write failed`, err);
-          }
-        )
+    tail = tail.then(() =>
+      op().then(
+        () => undefined,
+        (err) => {
+          console.error(`[userscript ${scriptId}] value write failed`, err);
+        },
+      ),
     );
     return tail;
   }
@@ -72,6 +68,6 @@ export function createValueStore(
     deleteAsync(key) {
       cache.delete(key);
       return enqueue(() => deleteUserscriptValue(scriptId, key));
-    }
+    },
   };
 }

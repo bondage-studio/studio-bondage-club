@@ -100,7 +100,7 @@ const allPages: PageDef[] = [
     id: "userscripts",
     icon: <ScrollText size={16} />,
     label: "Userscripts",
-    description: "Install and manage Tampermonkey-style userscripts for the game page."
+    description: "Install and manage Tampermonkey-style userscripts for the game page.",
   },
   {
     id: "android",

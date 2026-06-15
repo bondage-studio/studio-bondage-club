@@ -5,7 +5,7 @@ export function Panel({
   title,
   action,
   children,
-  className
+  className,
 }: {
   title?: ReactNode;
   action?: ReactNode;
@@ -14,10 +14,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={cn(
-        "overflow-hidden rounded-md border bg-card @max-xl:shadow-md",
-        className
-      )}
+      className={cn("overflow-hidden rounded-md border bg-card @max-xl:shadow-md", className)}
     >
       {title && (
         <div className="flex h-7 items-center justify-between gap-2 border-b bg-muted px-3">

@@ -24,8 +24,8 @@ namespace {
 
 constexpr auto kIdleTimeout = std::chrono::seconds(120);
 constexpr auto kWriteTimeout = std::chrono::seconds(120);
-constexpr std::size_t kHeaderLimit = 1024 * 1024;       // 1 MiB
-constexpr std::size_t kBodyLimit = 32 * 1024 * 1024;    // 32 MiB
+constexpr std::size_t kHeaderLimit = 1024 * 1024;     // 1 MiB
+constexpr std::size_t kBodyLimit = 32 * 1024 * 1024;  // 32 MiB
 
 // Headers Beast computes itself; never copy them through from a handler.
 bool is_reserved_header(std::string_view key) {
@@ -149,9 +149,7 @@ Request build_request(http::request<http::string_body>& req) {
 }  // namespace
 
 Session::Session(tcp::socket socket, Handler handler, ConnectionStats& stats)
-    : stream_(std::move(socket)),
-      handler_(std::move(handler)),
-      stats_(stats) {}
+    : stream_(std::move(socket)), handler_(std::move(handler)), stats_(stats) {}
 
 asio::awaitable<void> Session::run() {
     stats_.active.fetch_add(1, std::memory_order_relaxed);

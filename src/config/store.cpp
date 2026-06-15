@@ -38,20 +38,22 @@ void reject_unknown(const ordered_json& obj, std::initializer_list<const char*> 
 
 void strict_check(const ordered_json& root) {
     if (!root.is_object()) throw Error("config must be a JSON object");
-    reject_unknown(root, {"server", "mode", "upstream", "gameServer", "socks5Proxy",
-                          "localGameServer", "gameServerStoragePath", "gameServerSettings",
-                          "cache", "package"});
+    reject_unknown(root,
+                   {"server", "mode", "upstream", "gameServer", "socks5Proxy", "localGameServer",
+                    "gameServerStoragePath", "gameServerSettings", "cache", "package"});
     if (auto it = root.find("server"); it != root.end() && it->is_object()) {
         reject_unknown(*it, {"host", "port", "adminBasePath"});
     }
     if (auto it = root.find("gameServerSettings"); it != root.end() && it->is_object()) {
-        reject_unknown(*it, {"pingIntervalMs", "pingTimeoutMs", "maxPayloadBytes",
-                             "messageRatePerSec", "ipConnectionLimit", "ipConnectionRatePerSec",
-                             "accountCreatePerDay", "accountCreatePerHour", "loginPaceMs",
-                             "loginQueueThreshold", "pbkdf2Iterations", "passwordResetThrottleMs",
-                             "relationshipDelayMs", "serverInfoIntervalSec", "delayedFlushIntervalSec",
-                             "searchMaxResults", "roomLimitDefault", "roomLimitMin", "roomLimitMax",
-                             "descriptionMaxLen", "emailMaxLen", "nameMaxLen", "ownershipNotesMaxLen"});
+        reject_unknown(*it,
+                       {"pingIntervalMs",      "pingTimeoutMs",         "maxPayloadBytes",
+                        "messageRatePerSec",   "ipConnectionLimit",     "ipConnectionRatePerSec",
+                        "accountCreatePerDay", "accountCreatePerHour",  "loginPaceMs",
+                        "loginQueueThreshold", "pbkdf2Iterations",      "passwordResetThrottleMs",
+                        "relationshipDelayMs", "serverInfoIntervalSec", "delayedFlushIntervalSec",
+                        "searchMaxResults",    "roomLimitDefault",      "roomLimitMin",
+                        "roomLimitMax",        "descriptionMaxLen",     "emailMaxLen",
+                        "nameMaxLen",          "ownershipNotesMaxLen"});
     }
     if (auto it = root.find("cache"); it != root.end() && it->is_object()) {
         reject_unknown(*it, {"dir", "defaultTTLSeconds", "maxSizeBytes", "stores", "rules"});
@@ -64,9 +66,10 @@ void strict_check(const ordered_json& root) {
         if (auto rl = it->find("rules"); rl != it->end() && rl->is_array()) {
             for (const auto& r : *rl) {
                 if (r.is_object())
-                    reject_unknown(r, {"host", "pathPrefix", "pathPattern", "store", "bypass",
-                                       "ttlSeconds", "keyMode", "cacheControl", "forceCache",
-                                       "version", "keyPattern", "keyTemplate", "versionRevalidate"});
+                    reject_unknown(
+                        r, {"host", "pathPrefix", "pathPattern", "store", "bypass", "ttlSeconds",
+                            "keyMode", "cacheControl", "forceCache", "version", "keyPattern",
+                            "keyTemplate", "versionRevalidate"});
             }
         }
     }

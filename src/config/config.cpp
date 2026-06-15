@@ -239,8 +239,8 @@ void Config::validate() const {
 
     const auto& g = game_server_settings;
     auto require_pos = [](const char* name, std::int64_t v) {
-        if (v <= 0) throw ValidationError(std::string("gameServerSettings ") + name +
-                                          " must be positive");
+        if (v <= 0)
+            throw ValidationError(std::string("gameServerSettings ") + name + " must be positive");
     };
     require_pos("pingIntervalMs", g.ping_interval_ms);
     require_pos("pingTimeoutMs", g.ping_timeout_ms);
@@ -297,7 +297,8 @@ void to_json(ordered_json& j, const ServerConfig& s) {
 void from_json(const ordered_json& j, ServerConfig& s) {
     if (auto it = j.find("host"); it != j.end()) s.host = it->get<std::string>();
     if (auto it = j.find("port"); it != j.end()) s.port = it->get<int>();
-    if (auto it = j.find("adminBasePath"); it != j.end()) s.admin_base_path = it->get<std::string>();
+    if (auto it = j.find("adminBasePath"); it != j.end())
+        s.admin_base_path = it->get<std::string>();
 }
 
 void to_json(ordered_json& j, const StoreConfig& s) {
@@ -327,7 +328,8 @@ void to_json(ordered_json& j, const CacheConfig& c) {
 
 void from_json(const ordered_json& j, CacheConfig& c) {
     if (auto it = j.find("dir"); it != j.end()) c.dir = it->get<std::string>();
-    if (auto it = j.find("defaultTTLSeconds"); it != j.end()) c.default_ttl_seconds = it->get<int>();
+    if (auto it = j.find("defaultTTLSeconds"); it != j.end())
+        c.default_ttl_seconds = it->get<int>();
     if (auto it = j.find("maxSizeBytes"); it != j.end()) c.max_size_bytes = it->get<std::int64_t>();
     if (auto it = j.find("stores"); it != j.end()) c.stores = it->get<std::vector<StoreConfig>>();
     if (auto it = j.find("rules"); it != j.end())
@@ -429,7 +431,8 @@ void from_json(const ordered_json& j, Config& c) {
     if (auto it = j.find("localGameServer"); it != j.end()) c.local_game_server = it->get<bool>();
     if (auto it = j.find("gameServerStoragePath"); it != j.end())
         c.game_server_storage_path = it->get<std::string>();
-    if (auto it = j.find("gameServerSettings"); it != j.end()) from_json(*it, c.game_server_settings);
+    if (auto it = j.find("gameServerSettings"); it != j.end())
+        from_json(*it, c.game_server_settings);
     if (auto it = j.find("cache"); it != j.end()) from_json(*it, c.cache);
     if (auto it = j.find("package"); it != j.end()) from_json(*it, c.package);
 }

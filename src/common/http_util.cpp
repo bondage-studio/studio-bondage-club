@@ -11,7 +11,9 @@ namespace sbc {
 
 namespace {
 
-char lower(char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+char lower(char c) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+}
 
 std::string trim(std::string_view s) {
     std::size_t b = 0, e = s.size();
@@ -106,9 +108,14 @@ bool header_contains_token(std::string_view header, std::string_view token) {
 }
 
 bool is_hop_by_hop(std::string_view key) {
-    static const std::array<const char*, 8> hop = {
-        "Connection",          "Proxy-Connection", "Keep-Alive",     "Proxy-Authenticate",
-        "Proxy-Authorization", "Te",               "Trailer",        "Transfer-Encoding"};
+    static const std::array<const char*, 8> hop = {"Connection",
+                                                   "Proxy-Connection",
+                                                   "Keep-Alive",
+                                                   "Proxy-Authenticate",
+                                                   "Proxy-Authorization",
+                                                   "Te",
+                                                   "Trailer",
+                                                   "Transfer-Encoding"};
     // "Upgrade" is intentionally NOT stripped here; WebSocket upgrades are
     // handled explicitly before generic forwarding.
     for (const char* h : hop) {
@@ -124,8 +131,8 @@ void strip_hop_by_hop(HeaderMap& headers) {
         std::size_t start = 0;
         while (start <= v.size()) {
             std::size_t comma = v.find(',', start);
-            std::string token =
-                trim(v.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            std::string token = trim(
+                v.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
             if (!token.empty()) conn_tokens.push_back(token);
             if (comma == std::string::npos) break;
             start = comma + 1;

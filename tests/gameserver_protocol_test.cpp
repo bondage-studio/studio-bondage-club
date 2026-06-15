@@ -35,7 +35,10 @@ SBC_TEST(eio_payload_framing) {
     std::vector<std::string> packets = {"40", "42[\"a\"]", "2"};
     std::string body = eio::encode_payload(packets);
     // Packets joined by the record separator \x1e.
-    std::string expected = "40\x1e" "42[\"a\"]\x1e" "2";
+    std::string expected =
+        "40\x1e"
+        "42[\"a\"]\x1e"
+        "2";
     CHECK(body == expected);
 
     auto decoded = eio::decode_payload(body);

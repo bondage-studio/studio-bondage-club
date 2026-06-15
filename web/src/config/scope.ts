@@ -3,7 +3,7 @@ import type { AppConfig, ConfigScopeName } from "../types";
 export const tierMessages: Record<number, string> = {
   0: "Applied instantly",
   1: "Cache rebuilt",
-  2: "Restart required to take effect"
+  2: "Restart required to take effect",
 };
 
 // scopeSlice extracts the JSON body PUT to /api/config/{scope}. It mirrors the
@@ -18,14 +18,14 @@ export function scopeSlice(cfg: AppConfig, scope: ConfigScopeName): unknown {
         port: cfg.server.port,
         adminBasePath: cfg.server.adminBasePath,
         upstream: cfg.upstream,
-        socks5Proxy: cfg.socks5Proxy
+        socks5Proxy: cfg.socks5Proxy,
       };
     case "cache":
       return cfg.cache;
     case "gameserver":
       return {
         localGameServer: cfg.localGameServer,
-        gameServerStoragePath: cfg.gameServerStoragePath
+        gameServerStoragePath: cfg.gameServerStoragePath,
       };
     case "gamesettings":
       return cfg.gameServerSettings;

@@ -32,7 +32,9 @@ export function CacheMaintenance() {
     setStatus("");
     try {
       const { expired } = await expireCache(filter);
-      setStatus(`${label}: ${expired} ${expired === 1 ? "entry" : "entries"} marked for revalidation`);
+      setStatus(
+        `${label}: ${expired} ${expired === 1 ? "entry" : "entries"} marked for revalidation`,
+      );
       await refresh();
     } catch (err) {
       setStatus(errorMessage(err));
@@ -71,8 +73,8 @@ export function CacheMaintenance() {
     >
       <div className="grid gap-2">
         <p className="text-xs text-muted-foreground">
-          Marks entries stale without deleting bodies — the next request revalidates via ETag
-          (304 keeps the body). Use it to force a refresh against upstream.
+          Marks entries stale without deleting bodies — the next request revalidates via ETag (304
+          keeps the body). Use it to force a refresh against upstream.
         </p>
         {versions.length === 0 ? (
           <p className="text-xs text-muted-foreground">No version-tagged entries cached yet.</p>

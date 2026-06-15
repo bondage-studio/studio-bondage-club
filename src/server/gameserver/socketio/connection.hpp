@@ -81,10 +81,10 @@ public:
     boost::asio::strand<boost::asio::any_io_executor>& strand() { return strand_; }
 
 private:
-    void push_locked(std::string packet);   // append + wake; must run on strand
-    void handle_sio_payload(std::string_view payload);              // on strand
+    void push_locked(std::string packet);               // append + wake; must run on strand
+    void handle_sio_payload(std::string_view payload);  // on strand
     void dispatch_event(const std::string& event, const nlohmann::json& data);  // on strand
-    void do_disconnect(const std::string& reason);                  // on strand
+    void do_disconnect(const std::string& reason);                              // on strand
     boost::asio::awaitable<void> heartbeat_loop();
     boost::asio::awaitable<void> ws_reader(
         boost::beast::websocket::stream<boost::beast::tcp_stream>& ws);
@@ -101,8 +101,8 @@ private:
     bool sio_connected_ = false;
     bool closing_ = false;
     bool awaiting_pong_ = false;
-    bool ws_mode_ = false;   // true once the WebSocket upgrade completed
-    bool ws_stop_ = false;   // signals the WS read/write loops to exit
+    bool ws_mode_ = false;  // true once the WebSocket upgrade completed
+    bool ws_stop_ = false;  // signals the WS read/write loops to exit
     std::shared_ptr<Socket> socket_;
     std::unordered_map<std::string, EventHandler> handlers_;
     DisconnectHandler disconnect_handler_;

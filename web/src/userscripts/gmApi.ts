@@ -60,9 +60,8 @@ function gmXmlHttpRequest(details: GmXhrDetails): { abort: () => void } {
     statusText: xhr.statusText,
     responseHeaders: xhr.getAllResponseHeaders(),
     response: xhr.response,
-    responseText:
-      xhr.responseType === "" || xhr.responseType === "text" ? xhr.responseText : "",
-    finalUrl: details.url
+    responseText: xhr.responseType === "" || xhr.responseType === "text" ? xhr.responseText : "",
+    finalUrl: details.url,
   });
 
   xhr.onload = () => details.onload?.(build());
@@ -80,7 +79,7 @@ function gmXmlHttpRequestPromise(details: GmXhrDetails): Promise<GmXhrResponse> 
       ...details,
       onload: resolve,
       onerror: reject,
-      ontimeout: reject
+      ontimeout: reject,
     });
   });
 }
@@ -124,7 +123,7 @@ function gmOpenInTab(url: string, options?: { active?: boolean } | boolean) {
   }
   return {
     close: () => win?.close(),
-    closed: () => win?.closed ?? true
+    closed: () => win?.closed ?? true,
   };
 }
 
@@ -134,10 +133,7 @@ interface GmNotificationDetails {
   onclick?: () => void;
 }
 
-function gmNotification(
-  detailsOrText: GmNotificationDetails | string,
-  title?: string
-): void {
+function gmNotification(detailsOrText: GmNotificationDetails | string, title?: string): void {
   const details: GmNotificationDetails =
     typeof detailsOrText === "string" ? { text: detailsOrText, title } : detailsOrText;
   const show = () => {
@@ -170,7 +166,7 @@ export function buildGmBindings(
   script: Userscript,
   meta: UserscriptMetadata,
   values: ValueStore,
-  resources: Record<string, ResourceData>
+  resources: Record<string, ResourceData>,
 ): Record<string, unknown> {
   const gmInfo = {
     script: {
@@ -185,12 +181,12 @@ export function buildGmBindings(
       matches: meta.match,
       excludes: meta.exclude,
       resources: meta.resource,
-      "run-at": meta.runAt
+      "run-at": meta.runAt,
     },
     scriptHandler: "Studio Bondage Club",
     version: "1.0",
     scriptMetaStr: meta.metaStr,
-    scriptWillUpdate: script.autoUpdate
+    scriptWillUpdate: script.autoUpdate,
   };
 
   const getValue = (key: string, def?: unknown) => values.get(key, def);
@@ -220,7 +216,7 @@ export function buildGmBindings(
     setClipboard: gmSetClipboard,
     openInTab: gmOpenInTab,
     notification: gmNotification,
-    log: (...args: unknown[]) => console.log(`[${meta.name || script.name}]`, ...args)
+    log: (...args: unknown[]) => console.log(`[${meta.name || script.name}]`, ...args),
   };
 
   return {
@@ -240,6 +236,6 @@ export function buildGmBindings(
     GM_notification: gmNotification,
     GM_log: (...args: unknown[]) => console.log(`[${meta.name || script.name}]`, ...args),
     GM: gm,
-    unsafeWindow: window
+    unsafeWindow: window,
   };
 }

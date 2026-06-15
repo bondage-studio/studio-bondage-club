@@ -114,8 +114,9 @@ asio::awaitable<nlohmann::json> UserscriptUpdater::run_pass() {
             creq.method = "GET";
             creq.target = *target;
             net::StringSink sink;
-            net::HeadHandler on_head =
-                [](const net::ClientResponse&) -> asio::awaitable<void> { co_return; };
+            net::HeadHandler on_head = [](const net::ClientResponse&) -> asio::awaitable<void> {
+                co_return;
+            };
             co_await client.fetch(creq, on_head, sink);
             source = std::move(sink.body);
         } catch (const std::exception& e) {
@@ -132,17 +133,14 @@ asio::awaitable<nlohmann::json> UserscriptUpdater::run_pass() {
                                       .count();
         json pending = {{"version", new_version}, {"source", source}, {"fetchedAt", fetched_at}};
         try {
-            co_await net::run_blocking(blocking_, [store = store_, id, pending]() {
-                store->set_pending(id, pending);
-            });
+            co_await net::run_blocking(
+                blocking_, [store = store_, id, pending]() { store->set_pending(id, pending); });
         } catch (const std::exception& e) {
             spdlog::warn("userscript set_pending {} failed: {}", id, e.what());
             continue;
         }
-        updates.push_back({{"id", id},
-                           {"name", name},
-                           {"fromVersion", current},
-                           {"toVersion", new_version}});
+        updates.push_back(
+            {{"id", id}, {"name", name}, {"fromVersion", current}, {"toVersion", new_version}});
     }
 
     co_return json{{"checked", checked}, {"updates", updates}};

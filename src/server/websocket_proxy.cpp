@@ -97,8 +97,8 @@ asio::awaitable<void> relay_websocket(Request& req, ResponseWriter& w, const Url
     };
 
     tcp::resolver resolver(ex);
-    auto endpoints = co_await resolver.async_resolve(host, std::to_string(port),
-                                                     asio::use_awaitable);
+    auto endpoints =
+        co_await resolver.async_resolve(host, std::to_string(port), asio::use_awaitable);
     tcp::socket socket(ex);
     co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
 

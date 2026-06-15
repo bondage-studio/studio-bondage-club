@@ -39,7 +39,7 @@ export function CacheTab({
   onAddRule,
   onEditRule,
   onDeleteRule,
-  onMoveRule
+  onMoveRule,
 }: Props) {
   const stores = form.cache.stores ?? [];
   const rules = form.cache.rules ?? [];
@@ -75,7 +75,9 @@ export function CacheTab({
               <div className="col-span-2 flex gap-4 px-1 text-xs text-muted-foreground">
                 <span>
                   Total:{" "}
-                  <strong className="text-foreground">{sseStats.total.entries.toLocaleString()}</strong>{" "}
+                  <strong className="text-foreground">
+                    {sseStats.total.entries.toLocaleString()}
+                  </strong>{" "}
                   entries,{" "}
                   <strong className="text-foreground">{formatBytes(sseStats.total.bytes)}</strong>
                 </span>
@@ -195,7 +197,9 @@ export function CacheTab({
                   <div className="flex min-w-0 flex-wrap gap-1">
                     {rule.host && <Badge variant="outline">host:{rule.host}</Badge>}
                     {rule.pathPrefix && <Badge variant="outline">prefix:{rule.pathPrefix}</Badge>}
-                    {rule.pathPattern && <Badge variant="outline">pattern:{rule.pathPattern}</Badge>}
+                    {rule.pathPattern && (
+                      <Badge variant="outline">pattern:{rule.pathPattern}</Badge>
+                    )}
                     {!rule.host && !rule.pathPrefix && !rule.pathPattern && (
                       <Badge variant="secondary">match all</Badge>
                     )}
@@ -204,7 +208,12 @@ export function CacheTab({
                     {rule.keyMode === "path" && <Badge variant="secondary">key:path</Badge>}
                     {rule.version && <Badge variant="outline">ver:{rule.version}</Badge>}
                     {rule.keyPattern && <Badge variant="outline">key-rewrite</Badge>}
-                    {rule.store && <Badge variant="secondary">{">"}{rule.store}</Badge>}
+                    {rule.store && (
+                      <Badge variant="secondary">
+                        {">"}
+                        {rule.store}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button
