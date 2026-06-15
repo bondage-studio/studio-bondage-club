@@ -104,8 +104,12 @@ kotlin {
 }
 
 dependencies {
-    // Bundled Firefox engine — only linked into the `gecko` flavor. The `system`
-    // flavor uses android.webkit.WebView and pulls in nothing extra.
+    // androidx.webkit gives the `system` flavor WebViewCompat.addWebMessageListener
+    // (the origin-scoped, document-start JS<->native channel that backs the native
+    // RPC bridge). Only linked into `system`; `gecko` uses a WebExtension instead.
+    systemImplementation libs.androidx.webkit
+
+    // Bundled Firefox engine — only linked into the `gecko` flavor.
     geckoImplementation libs.geckoview
 }
 

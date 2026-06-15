@@ -6,7 +6,7 @@ export const tierMessages: Record<number, string> = {
   2: "Restart required to take effect",
 };
 
-// scopeSlice extracts the JSON body PUT to /api/config/{scope}. It mirrors the
+// scopeSlice extracts the slice sent in the config.updateScope RPC. It mirrors the
 // backend ConfigScope::get so dirty-detection and saving stay in sync. (The
 // remote `gameServer` URL is intentionally omitted from the connection slice —
 // the UI doesn't edit it, and the backend leaves absent keys untouched.)

@@ -1,9 +1,11 @@
 [versions]
 agp = "9.2.1"
+androidxWebkit = "1.12.1"
 geckoview = "151.0.20260608154138"
 kotlin = "2.4.0"
 
 [libraries]
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "androidxWebkit" }
 geckoview = { group = "org.mozilla.geckoview", name = "geckoview", version.ref = "geckoview" }
 
 [plugins]

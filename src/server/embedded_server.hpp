@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -41,6 +42,26 @@ public:
 
 #if defined(__ANDROID__)
     bool hardware_acceleration() const { return hardware_acceleration_; }
+
+    // --- Native RPC bridge (Android) ---
+    // The WebView host drives the same RPC dispatcher the /rpc WebSocket uses,
+    // skipping the localhost socket hop. The bridge object injected into the page
+    // is globally visible to all page JS, so deliver_rpc_frame verifies the
+    // capability token on every inbound frame (the stateless equivalent of the WS
+    // hello check) before dispatching.
+
+    // set_rpc_sender installs the sink for outbound frames (res/event). It is
+    // invoked from Asio worker threads with a UTF-8 JSON frame; the host marshals
+    // it to the WebView. Call once before delivering frames.
+    void set_rpc_sender(std::function<void(std::string)> sender);
+
+    // deliver_rpc_frame feeds one inbound JSON frame (carrying a "token") from the
+    // bridge. Drops it on a token mismatch or before a sender is set. Lazily opens
+    // the session on the first valid frame. Safe to call from any thread.
+    void deliver_rpc_frame(std::string frame);
+
+    // reset_rpc tears down the live native session (e.g. on navigation/destroy).
+    void reset_rpc();
 #endif
 
 private:

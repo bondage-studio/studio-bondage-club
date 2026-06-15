@@ -19,8 +19,9 @@ namespace sbc::server {
 enum class UpdateTier { Live = 0, Recreate = 1, Restart = 2 };
 
 // ConfigScope partitions the global Config into an independently-reloadable
-// slice. Each scope can extract and merge its slice (for GET / PUT /api/config/
-// {scope}) and report the tier a given change requires. The actual reload is
+// slice. Each scope can extract and merge its slice (for the config.get /
+// config.updateScope RPCs) and report the tier a given change requires. The
+// actual reload is
 // orchestrated centrally by App::apply_config, which fires work only for the
 // scopes whose slice changed, so a change to one scope never disturbs another's
 // in-flight requests. `changed` is derived from `get` (slice JSON equality).

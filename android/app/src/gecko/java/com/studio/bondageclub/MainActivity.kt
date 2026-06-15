@@ -9,10 +9,12 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.Toast
 import java.io.File
+import org.json.JSONObject
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebExtension
 
 class MainActivity : Activity() {
 
@@ -55,7 +57,59 @@ class MainActivity : Activity() {
         // WindowInsetsController) only exists once content has been installed.
         enableImmersiveMode()
 
-        session.loadUri("$localOrigin/")
+        installRpcBridge(runtime) { session.loadUri("$localOrigin/") }
+    }
+
+    // installRpcBridge registers the built-in WebExtension that exposes the native
+    // RPC bridge to the page (assets/extensions/sbc-rpc). Its content script opens
+    // a native-messaging port; we forward each frame to the C++ core and push
+    // res/event frames back over the port. The page is loaded only once the
+    // extension is registered, so window.__sbcNativeRpc exists before the bundle
+    // runs; if registration fails we load anyway and fall back to the WebSocket.
+    private fun installRpcBridge(runtime: GeckoRuntime, loadPage: () -> Unit) {
+        runtime.webExtensionController
+            .ensureBuiltIn(EXTENSION_URI, EXTENSION_ID)
+            .accept(
+                { extension ->
+                    if (extension != null) {
+                        NativeRpc.nativeInit()
+                        extension.setMessageDelegate(
+                            object : WebExtension.MessageDelegate {
+                                override fun onConnect(port: WebExtension.Port) {
+                                    NativeRpc.onOutbound = { frame ->
+                                        runOnUiThread {
+                                            try {
+                                                port.postMessage(JSONObject().put("d", frame))
+                                            } catch (e: Exception) {
+                                                // Port closed; the page's RPCs time out.
+                                            }
+                                        }
+                                    }
+                                    port.setDelegate(
+                                        object : WebExtension.PortDelegate {
+                                            override fun onPortMessage(
+                                                message: Any,
+                                                port: WebExtension.Port,
+                                            ) {
+                                                if (message is String) {
+                                                    NativeRpc.nativeDeliver(message)
+                                                }
+                                            }
+
+                                            override fun onDisconnect(port: WebExtension.Port) {
+                                                NativeRpc.onOutbound = null
+                                            }
+                                        }
+                                    )
+                                }
+                            },
+                            "browser",
+                        )
+                    }
+                    loadPage()
+                },
+                { loadPage() },
+            )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -88,6 +142,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        NativeRpc.onOutbound = null
+        NativeRpc.nativeReset()
         if (this::session.isInitialized) {
             session.close()
         }
@@ -108,6 +164,10 @@ class MainActivity : Activity() {
     companion object {
         const val HOST = "127.0.0.1"
         const val PORT = 8080
+
+        // Built-in RPC bridge extension, bundled under gecko/assets/extensions.
+        private const val EXTENSION_URI = "resource://android/assets/extensions/sbc-rpc/"
+        private const val EXTENSION_ID = "sbc-rpc@studio.bondageclub"
 
         // GeckoRuntime is a per-process singleton; reuse it across activity
         // re-creations so we never spin up a second Gecko process.

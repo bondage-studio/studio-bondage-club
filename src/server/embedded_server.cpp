@@ -1,8 +1,12 @@
 #include "server/embedded_server.hpp"
 
 #include <memory>
+#include <mutex>
 #include <utility>
 
+#include <boost/asio/post.hpp>
+#include <boost/asio/strand.hpp>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 #include "config/config.hpp"
@@ -13,6 +17,7 @@
 #include "net/tls.hpp"
 #include "server/app.hpp"
 #include "server/http_server.hpp"
+#include "server/rpc/session.hpp"
 
 namespace sbc::server {
 
@@ -25,6 +30,13 @@ struct EmbeddedServer::Impl {
     net::TlsContext tls;
     std::unique_ptr<App> app;
     std::unique_ptr<HttpServer> http_server;
+
+    // Native RPC bridge state (Android). The session is created lazily on the
+    // first authenticated frame; native_mu guards its lifecycle against the
+    // host thread (deliver/reset) racing the Asio sender.
+    std::mutex native_mu;
+    std::function<void(std::string)> native_sender;
+    std::shared_ptr<rpc::RpcSession> native_session;
 
     explicit Impl(config::Store s) : store(std::move(s)) {}
 };
@@ -91,5 +103,59 @@ void EmbeddedServer::stop() {
     impl_.reset();
     spdlog::info("studio bondage club local host stopped");
 }
+
+#if defined(__ANDROID__)
+
+namespace asio = boost::asio;
+
+void EmbeddedServer::set_rpc_sender(std::function<void(std::string)> sender) {
+    if (!impl_) return;
+    std::lock_guard<std::mutex> lock(impl_->native_mu);
+    impl_->native_sender = std::move(sender);
+}
+
+void EmbeddedServer::deliver_rpc_frame(std::string frame) {
+    if (!impl_) return;
+
+    auto msg = nlohmann::ordered_json::parse(frame, nullptr, /*allow_exceptions=*/false);
+    if (msg.is_discarded() || !msg.is_object()) return;
+
+    // Hard boundary: verify the capability token on every frame, then strip it so
+    // the session never sees it. A bad/absent token drops the frame silently
+    // (the WS path closes 4401; a one-shot bridge has nothing to close).
+    if (!impl_->app->rpc_verify(msg.value("token", std::string{}))) return;
+    msg.erase("token");
+
+    std::shared_ptr<rpc::RpcSession> session;
+    {
+        std::lock_guard<std::mutex> lock(impl_->native_mu);
+        if (!impl_->native_session) {
+            if (!impl_->native_sender) return;  // no sink wired yet
+            auto sender = impl_->native_sender;
+            impl_->native_session = impl_->app->make_rpc_session(
+                asio::make_strand(impl_->runtime.executor()), std::move(sender));
+        }
+        session = impl_->native_session;
+    }
+
+    // Hop onto the session's strand: handle_frame touches the subscription map.
+    asio::post(session->executor(),
+               [session, m = std::move(msg)]() mutable { session->handle_frame(m); });
+}
+
+void EmbeddedServer::reset_rpc() {
+    if (!impl_) return;
+    std::shared_ptr<rpc::RpcSession> session;
+    {
+        std::lock_guard<std::mutex> lock(impl_->native_mu);
+        session = std::move(impl_->native_session);
+        impl_->native_session.reset();
+    }
+    if (session) {
+        asio::post(session->executor(), [session] { session->cancel_all(); });
+    }
+}
+
+#endif  // __ANDROID__
 
 }  // namespace sbc::server

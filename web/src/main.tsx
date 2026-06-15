@@ -1,3 +1,10 @@
+// Capture pristine globals (WebSocket, JSON, timers) before anything else loads,
+// so the RPC channel cannot be intercepted by code we inject later. Keep first.
+// See src/rpc/pristine.ts.
+import "@/rpc/pristine";
+// Capture the Android native RPC bridge (if any) at document-start too, before
+// injected userscripts run. No-op on non-Android builds. See src/rpc/nativeBridge.ts.
+import "@/rpc/nativeBridge";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/App";

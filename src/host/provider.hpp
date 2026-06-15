@@ -52,7 +52,7 @@ public:
     virtual void close() {}
 };
 
-// HomepageProvider fetches the upstream homepage source (GET /api/homepage).
+// HomepageProvider fetches the upstream homepage source (the `homepage.get` RPC).
 class HomepageProvider {
 public:
     virtual ~HomepageProvider() = default;

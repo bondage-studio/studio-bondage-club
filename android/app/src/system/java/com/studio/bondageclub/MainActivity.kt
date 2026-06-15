@@ -12,6 +12,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -61,7 +63,32 @@ class MainActivity : Activity() {
         // WindowInsetsController) only exists once content has been installed.
         enableImmersiveMode()
 
+        installRpcBridge(localOrigin)
+
         webView.loadUrl("$localOrigin/")
+    }
+
+    // installRpcBridge wires the native RPC channel: an origin-scoped JS object
+    // (window.__sbcNativeRpc) injected at document-start. The web bundle captures
+    // it before any userscript runs (nativeBridge.ts) and routes RPC through it
+    // instead of the localhost WebSocket. Each inbound frame carries the
+    // capability token the C++ core verifies; the replyProxy pushes res/event
+    // frames back. If the device WebView is too old to support the feature, we
+    // skip it and the web bundle transparently falls back to the WebSocket.
+    private fun installRpcBridge(localOrigin: String) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            return
+        }
+        NativeRpc.nativeInit()
+        WebViewCompat.addWebMessageListener(
+            webView,
+            BRIDGE_NAME,
+            setOf(localOrigin),
+        ) { view, message, _, _, replyProxy ->
+            // Capture the page's reply channel for native-initiated pushes (events).
+            NativeRpc.onOutbound = { frame -> view.post { replyProxy.postMessage(frame) } }
+            NativeRpc.nativeDeliver(message.data ?: "")
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -94,6 +121,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        NativeRpc.onOutbound = null
+        NativeRpc.nativeReset()
         if (this::webView.isInitialized) {
             webView.destroy()
         }
@@ -114,6 +143,9 @@ class MainActivity : Activity() {
     companion object {
         const val HOST = "127.0.0.1"
         const val PORT = 8080
+
+        // Must match BRIDGE_NAME in web/src/rpc/nativeBridge.ts.
+        private const val BRIDGE_NAME = "__sbcNativeRpc"
     }
 }
 

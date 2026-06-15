@@ -15,7 +15,7 @@ public:
 };
 
 // ValidationError is thrown by config validation; its message is shown in the
-// admin panel on a failed PUT /api/config.
+// admin panel on a failed config.replace / config.updateScope RPC.
 class ValidationError : public Error {
 public:
     explicit ValidationError(const std::string& message) : Error(message) {}

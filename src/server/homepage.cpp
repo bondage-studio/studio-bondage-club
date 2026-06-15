@@ -52,14 +52,13 @@ std::string html_escape(const std::string& s) {
 asio::awaitable<void> serve_homepage_shell(Request& req, ResponseWriter& w,
                                            const std::string& upstream,
                                            const std::string& admin_base_path,
-                                           bool local_game_server) {
+                                           bool local_game_server, const std::string& rpc_token) {
     if (!req.is_get() && !req.is_head()) {
         co_await method_not_allowed(w);
         co_return;
     }
 
     nlohmann::ordered_json bootstrap;
-    bootstrap["homepageSourcePath"] = "/api/homepage";
     bootstrap["upstreamBase"] = upstream;
     bootstrap["serviceWorkerPath"] = kServiceWorkerPath;
     bootstrap["adminRootID"] = kAdminRootID;
@@ -67,6 +66,10 @@ asio::awaitable<void> serve_homepage_shell(Request& req, ResponseWriter& w,
     // Boot-time default for the local/remote game-server switch; a localStorage
     // override (set when the user flips the panel toggle) takes precedence.
     bootstrap["defaultLocalGameServer"] = local_game_server;
+    // Capability secret for the /rpc channel. The trusted client reads this at
+    // document-start and erases it from the DOM before any userscript runs; it is
+    // never exposed on window. See src/server/rpc/auth.hpp.
+    bootstrap["rpcToken"] = rpc_token;
 
     std::string script_path = trim_right_slash(admin_base_path) + "/assets/studio-panel.js";
     const std::string sid = kStatusRootID;

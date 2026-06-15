@@ -4,6 +4,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,9 @@
 #include "server/config_scope.hpp"
 #include "server/gameserver/game/game_app.hpp"
 #include "server/http_types.hpp"
+#include "server/rpc/auth.hpp"
+#include "server/rpc/dispatcher.hpp"
+#include "server/rpc/session.hpp"
 #include "server/static_assets.hpp"
 #include "server/userscript_store.hpp"
 #include "server/userscript_updater.hpp"
@@ -39,6 +43,16 @@ public:
 
     std::string active_address() const { return active_address_; }
 
+    // Native (in-process) RPC access, used by the Android JNI bridge to drive the
+    // same dispatcher the /rpc WebSocket uses, without the localhost socket hop.
+    // The capability token is verified per inbound frame because the native bridge
+    // object is globally visible to page JS (mirroring the WS hello check).
+    bool rpc_verify(std::string_view token) const { return rpc_auth_.verify(token); }
+    std::shared_ptr<rpc::RpcSession> make_rpc_session(boost::asio::any_io_executor exec,
+                                                      rpc::RpcSession::Sender send) {
+        return std::make_shared<rpc::RpcSession>(std::move(exec), rpc_dispatcher_, std::move(send));
+    }
+
 private:
     struct State {
         config::Config cfg;
@@ -47,18 +61,34 @@ private:
 
     std::shared_ptr<const State> snapshot() const;
 
-    boost::asio::awaitable<void> handle_api(Request& req, ResponseWriter& w, const State& state);
-    boost::asio::awaitable<void> handle_get_config(ResponseWriter& w);
-    boost::asio::awaitable<void> handle_put_config(Request& req, ResponseWriter& w);
-    boost::asio::awaitable<void> handle_put_config_scope(Request& req, ResponseWriter& w,
-                                                         const std::string& scope_name);
-    boost::asio::awaitable<void> handle_reset_config(ResponseWriter& w);
-    boost::asio::awaitable<void> handle_sse(ResponseWriter& w);
-    boost::asio::awaitable<void> handle_get_homepage(Request& req, ResponseWriter& w);
+    // Capability-gated RPC over a single multiplexed WebSocket. handle_rpc accepts
+    // the upgrade and drives an RpcConnection; register_rpc_methods wires the method
+    // table once (in the constructor). All API surface is served through this.
+    boost::asio::awaitable<void> handle_rpc(Request& req, ResponseWriter& w);
+    void register_rpc_methods();
 
-    // Userscript manager API (dedicated LevelDB store, not a config scope). All
+    // RPC method bodies that return their response JSON (the dispatcher serializes
+    // it into the response frame; errors are raised as rpc::RpcError). The cache
+    // helpers below (cache_stats/clear_cache/...) are reused directly.
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_config_get();
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_config_replace(
+        const nlohmann::ordered_json& body);
+    // Params are taken by value: this is a coroutine, and the dispatcher binds the
+    // arguments to temporaries (p.value("scope") and the slice ternary) that are
+    // destroyed at the end of the call expression — before the lazy coroutine body
+    // runs. By-value params copy them into the frame while they are still alive.
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_config_update_scope(
+        std::string scope_name, nlohmann::ordered_json slice, bool migrate);
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_config_reset();
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_homepage(bool force_revalidate);
+    // rpc_stats_event produces one per-store + total cache-stats snapshot; it backs
+    // both the cache.stats unary method and the stats.subscribe stream.
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_stats_event();
+
+    // Userscript manager methods (dedicated LevelDB store, not a config scope). All
     // store calls bridge onto the blocking pool via net::run_blocking.
-    boost::asio::awaitable<void> handle_userscripts(Request& req, ResponseWriter& w);
+    boost::asio::awaitable<nlohmann::ordered_json> rpc_userscript(
+        const std::string& method, const nlohmann::ordered_json& params);
 
     boost::asio::awaitable<cache::Stats> cache_stats();
     boost::asio::awaitable<void> clear_cache();
@@ -100,6 +130,11 @@ private:
     // Both are direct members, independent of the active provider/config.
     std::shared_ptr<UserscriptStore> userscripts_;
     std::unique_ptr<UserscriptUpdater> userscript_updater_;
+
+    // RPC capability secret + method table. Both are process-lifetime and
+    // independent of the active config/provider.
+    rpc::RpcAuth rpc_auth_;
+    rpc::RpcDispatcher rpc_dispatcher_;
 
     mutable std::shared_mutex state_mu_;
     std::shared_ptr<const State> state_;

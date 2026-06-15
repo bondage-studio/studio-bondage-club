@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Studio BC RPC Bridge",
+  "version": "1.0",
+  "description": "Bridges the admin panel's RPC channel to the native C++ core (GeckoView).",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sbc-rpc@studio.bondageclub"
+    }
+  },
+  "permissions": ["nativeMessaging"],
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1:8080/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

@@ -5,12 +5,20 @@
 #include <map>
 #include <optional>
 
+#include <boost/asio/co_spawn.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include <boost/asio/strand.hpp>
 #include <boost/asio/this_coro.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
+#include <boost/beast/http/empty_body.hpp>
+#include <boost/beast/http/message.hpp>
+#include <boost/beast/http/verb.hpp>
+#include <boost/beast/websocket/stream.hpp>
 #include <nlohmann/json.hpp>
 
 #include "common/error.hpp"
+#include "common/http_util.hpp"
 #include "common/url.hpp"
 #include "config/json.hpp"
 #include "host/packagehost/provider.hpp"
@@ -22,16 +30,32 @@
 #include "server/gameserver/game_socket_local.hpp"
 #include "server/homepage.hpp"
 #include "server/remote_proxy.hpp"
+#include "server/rpc/connection.hpp"
 #include "server/userscript_defaults.hpp"
 
 namespace sbc::server {
 
 namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
+namespace websocket = boost::beast::websocket;
 using nlohmann::ordered_json;
 
 namespace {
 
 constexpr std::size_t kMaxConfigBody = 1u << 20;  // 1 MiB
+
+// rebuild_request reconstructs a Beast request from the internal Request so the
+// WebSocket handshake can complete on the hijacked socket. Mirrors the socket.io
+// server's helper.
+http::request<http::empty_body> rebuild_request(const Request& req) {
+    http::request<http::empty_body> out;
+    out.method(http::verb::get);
+    out.target(req.target);
+    out.version(11);
+    for (const auto& e : req.headers.entries()) out.insert(e.first, e.second);
+    return out;
+}
 
 // CommonHeaderWriter injects the shared response headers (CORS,
 // X-Studio-Local-Host) without overwriting handler-provided values.
@@ -222,6 +246,7 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
+    register_rpc_methods();
 
     // The updater reads the live config (for socks5) via snapshot(); start it
     // only once state_ is set. It records pending updates only — never applies.
@@ -264,8 +289,8 @@ asio::awaitable<void> App::serve(Request& req, ResponseWriter& raw) {
     auto state = snapshot();
     const config::Config& cfg = state->cfg;
 
-    if (req.path.rfind("/api/", 0) == 0) {
-        co_await handle_api(req, w, *state);
+    if (req.path == "/rpc") {
+        co_await handle_rpc(req, w);
         co_return;
     }
     if (req.path == kServiceWorkerPath) {
@@ -309,7 +334,7 @@ asio::awaitable<void> App::serve(Request& req, ResponseWriter& raw) {
     }
     if (req.path == "/" && (req.is_get() || req.is_head())) {
         co_await serve_homepage_shell(req, w, cfg.upstream, cfg.server.admin_base_path,
-                                      cfg.local_game_server);
+                                      cfg.local_game_server, rpc_auth_.token());
         co_return;
     }
     std::string admin_no_slash = cfg.server.admin_base_path;
@@ -326,386 +351,236 @@ asio::awaitable<void> App::serve(Request& req, ResponseWriter& raw) {
     co_await state->provider->serve(req, w);
 }
 
-asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const State& state) {
-    (void)state;
-    const std::string& path = req.path;
-    if (path == "/api/health") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        ordered_json j;
-        j["ok"] = true;
-        co_await write_json(w, 200, j);
-    } else if (path == "/api/config") {
-        if (req.is_get()) {
-            co_await handle_get_config(w);
-        } else if (req.method == "PUT") {
-            co_await handle_put_config(req, w);
-        } else {
-            co_await method_not_allowed(w);
-        }
-    } else if (path == "/api/config/reset") {
-        if (req.method == "POST") {
-            co_await handle_reset_config(w);
-        } else {
-            co_await method_not_allowed(w);
-        }
-    } else if (path.rfind("/api/config/", 0) == 0) {
-        if (req.method == "PUT") {
-            co_await handle_put_config_scope(req, w,
-                                             path.substr(std::string("/api/config/").size()));
-        } else {
-            co_await method_not_allowed(w);
-        }
-    } else if (path == "/api/modes") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        co_await write_json(w, 200, modes_json());
-    } else if (path == "/api/cache/stats") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
+asio::awaitable<void> App::handle_rpc(Request& req, ResponseWriter& w) {
+    // The capability boundary is enforced inside the connection's hello handshake
+    // (RpcAuth); the upgrade itself is open, like any same-origin endpoint.
+    const bool is_upgrade = sbc::iequals(req.headers.get("Upgrade"), "websocket") &&
+                            sbc::header_contains_token(req.headers.get("Connection"), "upgrade");
+    if (!is_upgrade) {
+        co_await write_error(w, 400, "the /rpc endpoint requires a WebSocket upgrade");
+        co_return;
+    }
+    net::HijackedConnection hc = w.hijack();
+    websocket::stream<beast::tcp_stream> ws(std::move(hc.stream));
+    ws.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
+    co_await ws.async_accept(rebuild_request(req), asio::use_awaitable);
+
+    // Drive the connection on its own strand so the concurrent reader/writer and
+    // any spawned request/subscription coroutines serialize their stream + state
+    // access (same reasoning as the socket.io connection).
+    auto strand = asio::make_strand(ctx_.io->executor());
+    auto conn =
+        std::make_shared<rpc::RpcConnection>(std::move(ws), strand, rpc_dispatcher_, rpc_auth_);
+    co_await asio::co_spawn(strand, conn->run(), asio::use_awaitable);
+}
+
+void App::register_rpc_methods() {
+    using nlohmann::ordered_json;
+    auto& d = rpc_dispatcher_;
+
+    // Config — forwarders to the json-returning method bodies.
+    d.add("config.get", [this](const ordered_json&) { return rpc_config_get(); });
+    d.add("config.replace", [this](const ordered_json& p) { return rpc_config_replace(p); });
+    d.add("config.reset", [this](const ordered_json&) { return rpc_config_reset(); });
+    d.add("config.updateScope", [this](const ordered_json& p) {
+        return rpc_config_update_scope(p.value("scope", std::string{}),
+                                       p.contains("slice") ? p["slice"] : ordered_json::object(),
+                                       p.value("migrate", false));
+    });
+
+    d.add("modes.list",
+          [](const ordered_json&) -> asio::awaitable<ordered_json> { co_return modes_json(); });
+
+    // Cache.
+    d.add("cache.stats", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
         cache::Stats stats = co_await cache_stats();
-        co_await write_json(w, 200, stats_json(stats));
-    } else if (path == "/api/cache/clear") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
+        co_return stats_json(stats);
+    });
+    d.add("cache.clear", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
         co_await clear_cache();
-        ordered_json j;
-        j["ok"] = true;
-        co_await write_json(w, 200, j);
-    } else if (path == "/api/cache/expire") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        std::string store, host, path_prefix, version;
-        std::string parse_error;
-        if (!req.body.empty()) {
-            try {
-                ordered_json body = ordered_json::parse(req.body);
-                store = body.value("store", "");
-                host = body.value("host", "");
-                path_prefix = body.value("pathPrefix", "");
-                version = body.value("version", "");
-            } catch (const std::exception& e) {
-                parse_error = e.what();
-            }
-        }
-        if (!parse_error.empty()) {
-            co_await write_error(w, 400, std::string("decode body: ") + parse_error);
-            co_return;
-        }
-        int expired = co_await expire_cache(store, host, path_prefix, version);
-        ordered_json j;
-        j["ok"] = true;
-        j["expired"] = expired;
-        co_await write_json(w, 200, j);
-    } else if (path == "/api/cache/versions") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        std::string store = query_value(req.raw_query, "store");
-        auto versions = co_await cache_versions(store);
+        co_return ordered_json{{"ok", true}};
+    });
+    d.add("cache.expire", [this](const ordered_json& p) -> asio::awaitable<ordered_json> {
+        int expired = co_await expire_cache(p.value("store", ""), p.value("host", ""),
+                                            p.value("pathPrefix", ""), p.value("version", ""));
+        co_return ordered_json{{"ok", true}, {"expired", expired}};
+    });
+    d.add("cache.versions", [this](const ordered_json& p) -> asio::awaitable<ordered_json> {
+        auto versions = co_await cache_versions(p.value("store", ""));
         ordered_json arr = ordered_json::array();
-        for (const auto& [ver, count] : versions) {
-            ordered_json e;
-            e["version"] = ver;
-            e["entries"] = count;
-            arr.push_back(std::move(e));
-        }
-        co_await write_json(w, 200, arr);
-    } else if (path == "/api/events") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        co_await handle_sse(w);
-    } else if (path == "/api/homepage") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        co_await handle_get_homepage(req, w);
-    } else if (path == "/api/gameserver/status") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
+        for (const auto& [ver, count] : versions)
+            arr.push_back(ordered_json{{"version", ver}, {"entries", count}});
+        co_return arr;
+    });
+
+    d.add("gameserver.status", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
+        auto state = snapshot();
         ordered_json j;
-        j["enabled"] = state.cfg.local_game_server;
+        j["enabled"] = state->cfg.local_game_server;
         j["online"] = game_ ? static_cast<std::int64_t>(game_->accounts().online_count()) : 0;
         j["rooms"] = game_ ? static_cast<std::int64_t>(game_->chatrooms().room_count()) : 0;
-        co_await write_json(w, 200, j);
-    } else if (path == "/api/userscripts" || path.rfind("/api/userscripts/", 0) == 0) {
-        co_await handle_userscripts(req, w);
-    } else {
-        co_await not_found(w);
+        co_return j;
+    });
+
+    d.add("homepage.get", [this](const ordered_json& p) {
+        return rpc_homepage(p.value("forceRevalidate", false));
+    });
+
+    // Userscript manager — every method routes through rpc_userscript.
+    for (const char* m :
+         {"userscripts.list", "userscripts.save", "userscripts.delete", "userscripts.reorder",
+          "userscripts.pending", "userscripts.applyUpdate", "userscripts.dismissUpdate",
+          "userscripts.values.get", "userscripts.values.set", "userscripts.values.delete",
+          "userscripts.settings.get", "userscripts.settings.set", "userscripts.checkUpdates"}) {
+        std::string name = m;
+        d.add(name, [this, name](const ordered_json& p) { return rpc_userscript(name, p); });
     }
+
+    // Streaming: per-store cache stats every 2s (replaces the SSE /api/events feed).
+    d.add_stream(
+        "stats.subscribe", [this]() { return rpc_stats_event(); }, std::chrono::seconds(2));
 }
 
-asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
-    const std::string& path = req.path;
+asio::awaitable<ordered_json> App::rpc_userscript(const std::string& method,
+                                                  const ordered_json& params) {
     auto& bp = *ctx_.blocking;
     auto store = userscripts_;
-
-    // Payloads here are small, so the dump/parse round-trip is cheap.
+    // The store speaks nlohmann::json; the dump/parse round-trip bridges it to the
+    // ordered_json the RPC layer uses. Payloads here are small, so it's cheap.
     auto as_ordered = [](const nlohmann::json& j) { return ordered_json::parse(j.dump()); };
 
-    if (path == "/api/userscripts") {
-        if (req.is_get()) {
-            nlohmann::json arr = co_await net::run_blocking(bp, [store]() {
-                nlohmann::json out = nlohmann::json::array();
-                for (auto& s : store->list()) {
-                    nlohmann::json e = s;
-                    std::string id = s.value("id", "");
-                    if (auto p = store->get_pending(id)) {
-                        e["pendingUpdate"] = {
-                            {"version", p->value("version", "")},
-                            {"fetchedAt", p->value("fetchedAt", std::int64_t{0})}};
-                    }
-                    out.push_back(std::move(e));
+    if (method == "userscripts.list") {
+        nlohmann::json arr = co_await net::run_blocking(bp, [store]() {
+            nlohmann::json out = nlohmann::json::array();
+            for (auto& s : store->list()) {
+                nlohmann::json e = s;
+                std::string id = s.value("id", "");
+                if (auto p = store->get_pending(id)) {
+                    e["pendingUpdate"] = {{"version", p->value("version", "")},
+                                          {"fetchedAt", p->value("fetchedAt", std::int64_t{0})}};
                 }
-                return out;
-            });
-            co_await write_json(w, 200, as_ordered(arr));
-        } else if (req.method == "POST") {
-            nlohmann::json script;
-            std::string err;
-            try {
-                script = nlohmann::json::parse(req.body);
-            } catch (const std::exception& e) {
-                err = std::string("decode userscript: ") + e.what();
+                out.push_back(std::move(e));
             }
-            if (!err.empty()) {
-                co_await write_error(w, 400, err);
-                co_return;
-            }
-            if (!script.is_object() || script.value("id", "").empty()) {
-                co_await write_error(w, 400, "userscript requires a non-empty id");
-                co_return;
-            }
-            nlohmann::json saved;
-            try {
-                saved = co_await net::run_blocking(bp, [store, script]() mutable {
-                    // Built-in defaults: id, name and the source URLs are immutable,
-                    // and the flag can't be forged onto a user script. Everything
-                    // else (source, enabled, autoUpdate, version, sortOrder) is the
-                    // caller's to change.
-                    auto existing = store->get(script.value("id", ""));
-                    if (existing && existing->value("builtin", false)) {
-                        script["builtin"] = true;
-                        script["name"] = existing->value("name", script.value("name", ""));
-                        if (existing->contains("downloadURL"))
-                            script["downloadURL"] = (*existing)["downloadURL"];
-                        else
-                            script.erase("downloadURL");
-                        if (existing->contains("updateURL"))
-                            script["updateURL"] = (*existing)["updateURL"];
-                        else
-                            script.erase("updateURL");
-                    } else {
-                        script.erase("builtin");
-                    }
-                    store->put(script);
-                    return script;
-                });
-            } catch (const std::exception& e) {
-                err = e.what();
-            }
-            if (!err.empty()) {
-                co_await write_error(w, 500, err);
-                co_return;
-            }
-            co_await write_json(w, 200, as_ordered(saved));
-        } else if (req.method == "DELETE") {
-            std::string id = percent_decode(query_value(req.raw_query, "script"));
-            if (id.empty()) {
-                co_await write_error(w, 400, "missing script id");
-                co_return;
-            }
-            bool is_builtin = co_await net::run_blocking(bp, [store, id]() {
-                auto existing = store->get(id);
-                return existing && existing->value("builtin", false);
-            });
-            if (is_builtin) {
-                co_await write_error(w, 403, "cannot delete a built-in userscript");
-                co_return;
-            }
-            co_await net::run_blocking(bp, [store, id]() { store->remove(id); });
-            ordered_json j;
-            j["ok"] = true;
-            co_await write_json(w, 200, j);
-        } else {
-            co_await method_not_allowed(w);
-        }
-        co_return;
+            return out;
+        });
+        co_return as_ordered(arr);
     }
-
-    if (path == "/api/userscripts/reorder") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
+    if (method == "userscripts.save") {
+        nlohmann::json script = nlohmann::json::parse(params.dump());
+        if (!script.is_object() || script.value("id", "").empty())
+            throw rpc::RpcError("bad_request", "userscript requires a non-empty id");
+        nlohmann::json saved = co_await net::run_blocking(bp, [store, script]() mutable {
+            // Built-in defaults: id, name and source URLs are immutable, and the
+            // flag can't be forged onto a user script. Everything else is the
+            // caller's to change.
+            auto existing = store->get(script.value("id", ""));
+            if (existing && existing->value("builtin", false)) {
+                script["builtin"] = true;
+                script["name"] = existing->value("name", script.value("name", ""));
+                if (existing->contains("downloadURL"))
+                    script["downloadURL"] = (*existing)["downloadURL"];
+                else
+                    script.erase("downloadURL");
+                if (existing->contains("updateURL"))
+                    script["updateURL"] = (*existing)["updateURL"];
+                else
+                    script.erase("updateURL");
+            } else {
+                script.erase("builtin");
+            }
+            store->put(script);
+            return script;
+        });
+        co_return as_ordered(saved);
+    }
+    if (method == "userscripts.delete") {
+        std::string id = params.value("script", "");
+        if (id.empty()) throw rpc::RpcError("bad_request", "missing script id");
+        bool is_builtin = co_await net::run_blocking(bp, [store, id]() {
+            auto existing = store->get(id);
+            return existing && existing->value("builtin", false);
+        });
+        if (is_builtin) throw rpc::RpcError("forbidden", "cannot delete a built-in userscript");
+        co_await net::run_blocking(bp, [store, id]() { store->remove(id); });
+        co_return ordered_json{{"ok", true}};
+    }
+    if (method == "userscripts.reorder") {
+        if (!params.contains("ids") || !params["ids"].is_array())
+            throw rpc::RpcError("bad_request", "reorder requires an ids array");
         std::vector<std::string> ids;
-        std::string err;
-        try {
-            nlohmann::json body = nlohmann::json::parse(req.body);
-            if (!body.is_array()) throw Error("body must be a JSON array of ids");
-            for (auto& v : body) ids.push_back(v.get<std::string>());
-        } catch (const std::exception& e) {
-            err = std::string("decode reorder: ") + e.what();
-        }
-        if (!err.empty()) {
-            co_await write_error(w, 400, err);
-            co_return;
-        }
+        for (const auto& v : params["ids"]) ids.push_back(v.get<std::string>());
         co_await net::run_blocking(bp, [store, ids]() { store->reorder(ids); });
-        ordered_json j;
-        j["ok"] = true;
-        co_await write_json(w, 200, j);
-        co_return;
+        co_return ordered_json{{"ok", true}};
     }
-
-    if (path == "/api/userscripts/pending") {
-        if (!req.is_get()) {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        std::string id = percent_decode(query_value(req.raw_query, "script"));
+    if (method == "userscripts.pending") {
+        std::string id = params.value("script", "");
         auto pending =
             co_await net::run_blocking(bp, [store, id]() { return store->get_pending(id); });
-        if (!pending) {
-            co_await not_found(w);
-            co_return;
-        }
-        co_await write_json(w, 200, as_ordered(*pending));
-        co_return;
+        if (!pending) throw rpc::RpcError("not_found", "no pending update for script");
+        co_return as_ordered(*pending);
     }
-
-    if (path == "/api/userscripts/apply-update") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        std::string id = percent_decode(query_value(req.raw_query, "script"));
+    if (method == "userscripts.applyUpdate") {
+        std::string id = params.value("script", "");
         auto updated =
             co_await net::run_blocking(bp, [store, id]() { return store->apply_pending(id); });
-        if (!updated) {
-            co_await write_error(w, 404, "no pending update for script");
-            co_return;
-        }
-        co_await write_json(w, 200, as_ordered(*updated));
-        co_return;
+        if (!updated) throw rpc::RpcError("not_found", "no pending update for script");
+        co_return as_ordered(*updated);
     }
-
-    if (path == "/api/userscripts/dismiss-update") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
-        std::string id = percent_decode(query_value(req.raw_query, "script"));
+    if (method == "userscripts.dismissUpdate") {
+        std::string id = params.value("script", "");
         co_await net::run_blocking(bp, [store, id]() { store->clear_pending(id); });
-        ordered_json j;
-        j["ok"] = true;
-        co_await write_json(w, 200, j);
-        co_return;
+        co_return ordered_json{{"ok", true}};
     }
-
-    if (path == "/api/userscripts/values") {
-        std::string id = percent_decode(query_value(req.raw_query, "script"));
-        if (id.empty()) {
-            co_await write_error(w, 400, "missing script id");
-            co_return;
-        }
-        if (req.is_get()) {
-            nlohmann::json vals =
-                co_await net::run_blocking(bp, [store, id]() { return store->values(id); });
-            co_await write_json(w, 200, as_ordered(vals));
-        } else if (req.method == "PUT") {
-            std::string key = percent_decode(query_value(req.raw_query, "key"));
-            if (key.empty()) {
-                co_await write_error(w, 400, "missing value key");
-                co_return;
-            }
-            std::string raw = req.body;
-            std::string err;
-            try {
-                co_await net::run_blocking(
-                    bp, [store, id, key, raw]() { store->set_value(id, key, raw); });
-            } catch (const std::exception& e) {
-                err = std::string("set value: ") + e.what();
-            }
-            if (!err.empty()) {
-                co_await write_error(w, 400, err);
-                co_return;
-            }
-            ordered_json j;
-            j["ok"] = true;
-            co_await write_json(w, 200, j);
-        } else if (req.method == "DELETE") {
-            std::string key = percent_decode(query_value(req.raw_query, "key"));
-            if (key.empty()) {
-                co_await write_error(w, 400, "missing value key");
-                co_return;
-            }
-            co_await net::run_blocking(bp, [store, id, key]() { store->del_value(id, key); });
-            ordered_json j;
-            j["ok"] = true;
-            co_await write_json(w, 200, j);
-        } else {
-            co_await method_not_allowed(w);
-        }
-        co_return;
+    if (method == "userscripts.values.get") {
+        std::string id = params.value("script", "");
+        if (id.empty()) throw rpc::RpcError("bad_request", "missing script id");
+        nlohmann::json vals =
+            co_await net::run_blocking(bp, [store, id]() { return store->values(id); });
+        co_return as_ordered(vals);
     }
-
-    if (path == "/api/userscripts/settings") {
-        if (req.is_get()) {
-            nlohmann::json s =
-                co_await net::run_blocking(bp, [store]() { return store->get_settings(); });
-            co_await write_json(w, 200, as_ordered(s));
-        } else if (req.method == "PUT") {
-            nlohmann::json settings;
-            std::string err;
-            try {
-                settings = nlohmann::json::parse(req.body);
-                if (!settings.is_object()) throw Error("settings must be a JSON object");
-            } catch (const std::exception& e) {
-                err = std::string("decode settings: ") + e.what();
-            }
-            if (!err.empty()) {
-                co_await write_error(w, 400, err);
-                co_return;
-            }
-            co_await net::run_blocking(bp, [store, settings]() { store->set_settings(settings); });
-            co_await write_json(w, 200, as_ordered(settings));
-        } else {
-            co_await method_not_allowed(w);
+    if (method == "userscripts.values.set") {
+        std::string id = params.value("script", "");
+        std::string key = params.value("key", "");
+        if (id.empty()) throw rpc::RpcError("bad_request", "missing script id");
+        if (key.empty()) throw rpc::RpcError("bad_request", "missing value key");
+        // GM values are stored as raw JSON text, matching the previous PUT body.
+        std::string raw = params.contains("value") ? params["value"].dump() : std::string("null");
+        try {
+            co_await net::run_blocking(bp,
+                                       [store, id, key, raw]() { store->set_value(id, key, raw); });
+        } catch (const std::exception& e) {
+            throw rpc::RpcError("bad_request", std::string("set value: ") + e.what());
         }
-        co_return;
+        co_return ordered_json{{"ok", true}};
     }
-
-    if (path == "/api/userscripts/check-updates") {
-        if (req.method != "POST") {
-            co_await method_not_allowed(w);
-            co_return;
-        }
+    if (method == "userscripts.values.delete") {
+        std::string id = params.value("script", "");
+        std::string key = params.value("key", "");
+        if (id.empty()) throw rpc::RpcError("bad_request", "missing script id");
+        if (key.empty()) throw rpc::RpcError("bad_request", "missing value key");
+        co_await net::run_blocking(bp, [store, id, key]() { store->del_value(id, key); });
+        co_return ordered_json{{"ok", true}};
+    }
+    if (method == "userscripts.settings.get") {
+        nlohmann::json s =
+            co_await net::run_blocking(bp, [store]() { return store->get_settings(); });
+        co_return as_ordered(s);
+    }
+    if (method == "userscripts.settings.set") {
+        nlohmann::json settings = nlohmann::json::parse(params.dump());
+        if (!settings.is_object())
+            throw rpc::RpcError("bad_request", "settings must be a JSON object");
+        co_await net::run_blocking(bp, [store, settings]() { store->set_settings(settings); });
+        co_return as_ordered(settings);
+    }
+    if (method == "userscripts.checkUpdates") {
         nlohmann::json summary = co_await userscript_updater_->check_now();
-        co_await write_json(w, 200, as_ordered(summary));
-        co_return;
+        co_return as_ordered(summary);
     }
-
-    co_await not_found(w);
+    throw rpc::RpcError("method_not_found", "unknown RPC method: " + method);
 }
 
-asio::awaitable<void> App::handle_get_config(ResponseWriter& w) {
+asio::awaitable<ordered_json> App::rpc_config_get() {
     auto state = snapshot();
     cache::Stats stats = co_await cache_stats();
     ordered_json resp;
@@ -714,50 +589,31 @@ asio::awaitable<void> App::handle_get_config(ResponseWriter& w) {
     resp["cache"] = stats_json(stats);
     resp["configPath"] = store_.path().string();
     resp["restartRequired"] = state->cfg.server.address() != active_address_;
-    co_await write_json(w, 200, resp);
+    co_return resp;
 }
 
-asio::awaitable<void> App::handle_put_config(Request& req, ResponseWriter& w) {
-    if (req.body.size() > kMaxConfigBody) {
-        co_await write_error(w, 400, "decode config: request body too large");
-        co_return;
-    }
+asio::awaitable<ordered_json> App::rpc_config_replace(const ordered_json& body) {
+    std::string text = body.dump();
+    if (text.size() > kMaxConfigBody)
+        throw rpc::RpcError("bad_request", "decode config: request body too large");
 
     config::Config new_cfg;
-    std::string error_msg;
-    bool failed = false;
     try {
-        new_cfg = config::normalize(config::parse_strict(req.body));
+        new_cfg = config::normalize(config::parse_strict(text));
     } catch (const std::exception& e) {
-        error_msg = std::string("decode config: ") + e.what();
-        failed = true;
+        throw rpc::RpcError("bad_request", std::string("decode config: ") + e.what());
     }
-    if (failed) {
-        co_await write_error(w, 400, error_msg);
-        co_return;
-    }
-
     try {
         new_cfg.validate();
     } catch (const std::exception& e) {
-        error_msg = e.what();
-        failed = true;
-    }
-    if (failed) {
-        co_await write_error(w, 400, error_msg);
-        co_return;
+        throw rpc::RpcError("bad_request", e.what());
     }
 
     std::map<std::string, UpdateTier> changed;
     try {
         changed = apply_config(new_cfg, /*only_scope=*/"", /*migrate_cache=*/false);
     } catch (const std::exception& e) {
-        error_msg = e.what();
-        failed = true;
-    }
-    if (failed) {
-        co_await write_error(w, 500, error_msg);
-        co_return;
+        throw rpc::RpcError("internal", e.what());
     }
 
     // Whole-config responses report the strongest changed-scope tier.
@@ -774,55 +630,33 @@ asio::awaitable<void> App::handle_put_config(Request& req, ResponseWriter& w) {
     resp["configPath"] = store_.path().string();
     resp["restartRequired"] = new_cfg.server.address() != active_address_;
     if (tier != UpdateTier::Live) resp["updateTier"] = static_cast<int>(tier);
-    co_await write_json(w, 200, resp);
+    co_return resp;
 }
 
-asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter& w,
-                                                   const std::string& scope_name) {
+asio::awaitable<ordered_json> App::rpc_config_update_scope(std::string scope_name,
+                                                           ordered_json slice, bool migrate) {
     const ConfigScope* scope = find_scope(scope_name);
-    if (scope == nullptr) {
-        co_await not_found(w);
-        co_return;
-    }
-    if (req.body.size() > kMaxConfigBody) {
-        co_await write_error(w, 400, "decode config: request body too large");
-        co_return;
-    }
-
-    std::string error_msg;
-    bool failed = false;
+    if (scope == nullptr) throw rpc::RpcError("not_found", "unknown config scope: " + scope_name);
+    if (slice.dump().size() > kMaxConfigBody)
+        throw rpc::RpcError("bad_request", "decode config: request body too large");
 
     // Merge the submitted slice into a copy of the live config, then validate the
     // whole config so cross-field invariants still hold.
     config::Config merged = snapshot()->cfg;
     try {
-        ordered_json slice = ordered_json::parse(req.body);
         if (!slice.is_object()) throw Error("scope body must be a JSON object");
         scope->set(merged, slice);
         merged = config::normalize(std::move(merged));
         merged.validate();
     } catch (const std::exception& e) {
-        error_msg = std::string("decode config: ") + e.what();
-        failed = true;
+        throw rpc::RpcError("bad_request", std::string("decode config: ") + e.what());
     }
-    if (failed) {
-        co_await write_error(w, 400, error_msg);
-        co_return;
-    }
-
-    // Data-directory migration is opt-in via ?migrate=true.
-    const bool migrate = req.raw_query.find("migrate=true") != std::string::npos;
 
     std::map<std::string, UpdateTier> changed;
     try {
         changed = apply_config(merged, scope_name, migrate);
     } catch (const std::exception& e) {
-        error_msg = e.what();
-        failed = true;
-    }
-    if (failed) {
-        co_await write_error(w, 500, error_msg);
-        co_return;
+        throw rpc::RpcError("internal", e.what());
     }
 
     auto it = changed.find(scope_name);
@@ -835,26 +669,18 @@ asio::awaitable<void> App::handle_put_config_scope(Request& req, ResponseWriter&
     resp["updateTier"] = static_cast<int>(tier);
     resp["restartRequired"] = updated->cfg.server.address() != active_address_;
     resp["configPath"] = store_.path().string();
-    co_await write_json(w, 200, resp);
+    co_return resp;
 }
 
 // Restore the whole config to default_config(), persist it, and hot-apply what
 // can change live. A listener-address change is reported via restartRequired.
-asio::awaitable<void> App::handle_reset_config(ResponseWriter& w) {
+asio::awaitable<ordered_json> App::rpc_config_reset() {
     config::Config def = config::normalize(config::default_config());
-
-    std::string error_msg;
-    bool failed = false;
     try {
         def.validate();
         apply_config(def, /*only_scope=*/"", /*migrate_cache=*/false);
     } catch (const std::exception& e) {
-        error_msg = e.what();
-        failed = true;
-    }
-    if (failed) {
-        co_await write_error(w, 500, error_msg);
-        co_return;
+        throw rpc::RpcError("internal", e.what());
     }
 
     auto updated = snapshot();
@@ -865,7 +691,7 @@ asio::awaitable<void> App::handle_reset_config(ResponseWriter& w) {
     resp["cache"] = stats_json(stats);
     resp["configPath"] = store_.path().string();
     resp["restartRequired"] = updated->cfg.server.address() != active_address_;
-    co_await write_json(w, 200, resp);
+    co_return resp;
 }
 
 void App::register_scopes() {
@@ -1122,74 +948,54 @@ asio::awaitable<std::vector<std::pair<std::string, int>>> App::cache_versions(
     co_return std::vector<std::pair<std::string, int>>{merged.begin(), merged.end()};
 }
 
-asio::awaitable<void> App::handle_sse(ResponseWriter& w) {
-    HeaderMap headers;
-    headers.set("Content-Type", "text/event-stream");
-    headers.set("Cache-Control", "no-cache");
-    headers.set("X-Accel-Buffering", "no");
-    co_await w.send_header(200, std::move(headers), std::nullopt);
-
-    auto ex = co_await asio::this_coro::executor;
-    asio::steady_timer timer(ex);
-
-    for (;;) {
-        auto state = snapshot();
-        ordered_json evt;
-        evt["type"] = "stats";
-        ordered_json stores = ordered_json::array();
-        cache::Stats total;
-        if (auto* sp = dynamic_cast<host::StoreProvider*>(state->provider.get())) {
-            for (auto& store : sp->all_stores()) {
-                cache::Stats s = co_await net::run_blocking(*ctx_.blocking,
-                                                            [store]() { return store->stats(); });
-                ordered_json sj;
-                sj["name"] = store->name();
-                sj["stats"] = stats_json(s);
-                stores.push_back(sj);
-                total.entries += s.entries;
-                total.bytes += s.bytes;
-            }
+asio::awaitable<ordered_json> App::rpc_stats_event() {
+    auto state = snapshot();
+    ordered_json evt;
+    evt["type"] = "stats";
+    ordered_json stores = ordered_json::array();
+    cache::Stats total;
+    if (auto* sp = dynamic_cast<host::StoreProvider*>(state->provider.get())) {
+        for (auto& store : sp->all_stores()) {
+            cache::Stats s =
+                co_await net::run_blocking(*ctx_.blocking, [store]() { return store->stats(); });
+            ordered_json sj;
+            sj["name"] = store->name();
+            sj["stats"] = stats_json(s);
+            stores.push_back(sj);
+            total.entries += s.entries;
+            total.bytes += s.bytes;
         }
-        evt["stores"] = stores;
-        evt["total"] = stats_json(total);
-
-        std::string frame = "data: " + evt.dump() + "\n\n";
-        co_await w.write_chunk(frame);
-
-        timer.expires_after(std::chrono::seconds(2));
-        co_await timer.async_wait(asio::use_awaitable);
     }
+    evt["stores"] = stores;
+    evt["total"] = stats_json(total);
+    co_return evt;
 }
 
-asio::awaitable<void> App::handle_get_homepage(Request& req, ResponseWriter& w) {
+asio::awaitable<ordered_json> App::rpc_homepage(bool force_revalidate) {
     auto state = snapshot();
     auto* hp = dynamic_cast<host::HomepageProvider*>(state->provider.get());
-    if (hp == nullptr) {
-        co_await write_error(w, 501, "homepage source is not available in the active mode");
-        co_return;
-    }
+    if (hp == nullptr)
+        throw rpc::RpcError("unavailable", "homepage source is not available in the active mode");
+
+    // Over RPC there is no inbound HTTP request to forward; synthesize a minimal
+    // GET. fetch_homepage sets its own Accept header and reads Cache-Control to
+    // decide on a forced revalidation, so a shift-reload maps to forceRevalidate.
+    Request req;
+    req.method = "GET";
+    if (force_revalidate) req.headers.set("Cache-Control", "no-cache");
+
     host::HomepageDocument doc;
-    std::string error_msg;
-    bool failed = false;
     try {
         doc = co_await hp->fetch_homepage(req);
     } catch (const std::exception& e) {
-        error_msg = std::string("fetch homepage source: ") + e.what();
-        failed = true;
-    }
-    if (failed) {
-        co_await write_error(w, 502, error_msg);
-        co_return;
+        throw rpc::RpcError("upstream", std::string("fetch homepage source: ") + e.what());
     }
     ordered_json j;
     j["html"] = doc.body;
     j["url"] = doc.url;
     j["statusCode"] = doc.status_code;
     j["cacheStatus"] = doc.cache_status;
-    HeaderMap headers;
-    headers.set("Content-Type", "application/json; charset=utf-8");
-    headers.set("Cache-Control", "no-store");
-    co_await w.write_full(200, std::move(headers), j.dump());
+    co_return j;
 }
 
 void App::close() {

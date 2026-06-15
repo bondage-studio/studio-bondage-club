@@ -1,8 +1,9 @@
 import { isAndroidRuntime } from "@/lib/platform";
+import { rpcClient } from "@/rpc/client";
+import { setRpcToken } from "@/rpc/token";
 import { injectUserscriptsAt } from "@/userscripts/inject";
 
 interface StudioBootstrap {
-  homepageSourcePath: string;
   upstreamBase: string;
   serviceWorkerPath: string;
   adminRootID: string;
@@ -41,7 +42,15 @@ export function readStudioBootstrap(): StudioBootstrap | null {
     return null;
   }
   try {
-    return JSON.parse(script.textContent) as StudioBootstrap;
+    const data = JSON.parse(script.textContent) as StudioBootstrap & { rpcToken?: string };
+    // Capture the RPC capability token into a private closure and erase every
+    // trace of it before any injected userscript runs: drop it from the parsed
+    // object and remove the bootstrap <script> from the DOM. The token is never
+    // placed on window.
+    setRpcToken(data.rpcToken ?? "");
+    delete data.rpcToken;
+    script.remove();
+    return data;
   } catch (error) {
     console.error("Failed to parse Studio bootstrap data", error);
     setStatus(null, "error", "Studio bootstrap data could not be parsed.");
@@ -60,7 +69,7 @@ export async function restoreOriginalHomepage(bootstrap: StudioBootstrap | null)
     installMediaProxy();
 
     setStatus(bootstrap, "loading", "Fetching original homepage from local cache.");
-    const source = await fetchHomepageSource(bootstrap);
+    const source = await fetchHomepageSource();
 
     setStatus(
       bootstrap,
@@ -74,28 +83,8 @@ export async function restoreOriginalHomepage(bootstrap: StudioBootstrap | null)
   }
 }
 
-async function fetchHomepageSource(bootstrap: StudioBootstrap) {
-  const response = await fetch(bootstrap.homepageSourcePath, {
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`;
-    try {
-      const body = (await response.json()) as { error?: string };
-      if (body.error) {
-        message = body.error;
-      }
-    } catch {
-      // Keep the HTTP status as the error message.
-    }
-    throw new Error(`Could not fetch original homepage: ${message}`);
-  }
-
-  const source = (await response.json()) as HomepageSourceResponse;
+async function fetchHomepageSource(): Promise<HomepageSourceResponse> {
+  const source = await rpcClient.call<HomepageSourceResponse>("homepage.get", {});
   if (!source.html) {
     throw new Error("Original homepage endpoint returned an empty HTML document.");
   }
