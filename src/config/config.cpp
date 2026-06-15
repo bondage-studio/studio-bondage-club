@@ -406,6 +406,18 @@ void from_json(const ordered_json& j, GameServerConfig& g) {
     get_i("ownershipNotesMaxLen", g.ownership_notes_max_len);
 }
 
+#if defined(__ANDROID__)
+void to_json(ordered_json& j, const AndroidConfig& a) {
+    j = ordered_json::object();
+    j["hardwareAcceleration"] = a.hardware_acceleration;
+}
+
+void from_json(const ordered_json& j, AndroidConfig& a) {
+    if (auto it = j.find("hardwareAcceleration"); it != j.end())
+        a.hardware_acceleration = it->get<bool>();
+}
+#endif
+
 void to_json(ordered_json& j, const Config& c) {
     j = ordered_json::object();
     j["server"] = c.server;
@@ -418,6 +430,9 @@ void to_json(ordered_json& j, const Config& c) {
     j["gameServerSettings"] = c.game_server_settings;
     j["cache"] = c.cache;
     j["package"] = c.package;
+#if defined(__ANDROID__)
+    j["android"] = c.android;
+#endif
 }
 
 void from_json(const ordered_json& j, Config& c) {
@@ -435,6 +450,9 @@ void from_json(const ordered_json& j, Config& c) {
         from_json(*it, c.game_server_settings);
     if (auto it = j.find("cache"); it != j.end()) from_json(*it, c.cache);
     if (auto it = j.find("package"); it != j.end()) from_json(*it, c.package);
+#if defined(__ANDROID__)
+    if (auto it = j.find("android"); it != j.end()) from_json(*it, c.android);
+#endif
 }
 
 }  // namespace sbc::config

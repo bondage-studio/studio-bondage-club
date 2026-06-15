@@ -44,11 +44,11 @@ import type {
   StoreConfig,
 } from "@/types";
 
-type PanelTab = ConfigScopeName | "android" | "userscripts";
+type PanelTab = ConfigScopeName | "userscripts";
 
 // Tabs that own their own state and persistence, independent of the form/scope
 // machinery (no scopeSlice, no SectionBar save flow).
-const SELF_MANAGED_TABS: PanelTab[] = ["android", "userscripts"];
+const SELF_MANAGED_TABS: PanelTab[] = ["userscripts"];
 
 type PageDef = {
   id: PanelTab;
@@ -500,7 +500,9 @@ function App() {
                         {tab === "package" && (
                           <PackageTab form={form} snapshot={snapshot} onChange={updateConfig} />
                         )}
-                        {IS_ANDROID_BUILD && tab === "android" && <AndroidTab />}
+                        {IS_ANDROID_BUILD && tab === "android" && (
+                          <AndroidTab form={form} onChange={updateConfig} />
+                        )}
                       </>
                     )}
                   </div>

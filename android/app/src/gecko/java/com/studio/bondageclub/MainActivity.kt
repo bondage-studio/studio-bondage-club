@@ -1,28 +1,19 @@
 package com.studio.bondageclub
 
 import android.app.Activity
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.Toast
+import java.io.File
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 
-/**
- * GeckoView host: the bundled-browser flavor. Unlike the system-WebView flavor
- * (src/system/.../MainActivity.kt), the rendering engine ships inside the APK, so
- * it is immune to the device's (possibly stale) Android System WebView.
- *
- * Cross-origin asset caching is handled by the web bundle's own service worker —
- * NOT by a native shouldInterceptRequest hook. GeckoView is full Firefox and
- * supports service workers; `http://127.0.0.1` is a secure context, so the SW
- * registers and routes cross-origin requests through the local cache server,
- * exactly like the desktop build.
- */
 class MainActivity : Activity() {
 
     private lateinit var geckoView: GeckoView
@@ -125,15 +116,50 @@ class MainActivity : Activity() {
 
         private fun sharedRuntime(activity: Activity): GeckoRuntime {
             return runtime ?: synchronized(this) {
-                runtime ?: GeckoRuntime.create(
-                    activity.applicationContext,
-                    GeckoRuntimeSettings.Builder()
-                        // Inspect from desktop Firefox via about:debugging.
-                        .remoteDebuggingEnabled(true)
-                        .consoleOutput(true)
-                        .build()
-                ).also { runtime = it }
+                runtime ?: run {
+                    val debuggable =
+                        (activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+                    val builder = GeckoRuntimeSettings.Builder()
+                        // Dev-only: remote debugging (about:debugging from desktop
+                        // Firefox) and console mirroring both pipe data across the
+                        // IPC boundary, so keep them out of release builds.
+                        .remoteDebuggingEnabled(debuggable)
+                        .consoleOutput(debuggable)
+
+                    // GPU acceleration (WebRender + accelerated 2D canvas) is
+                    // opt-out via config.android.hardwareAcceleration. Gecko reads
+                    // prefs from a YAML file at startup; on release builds
+                    // (android:debuggable=false) the default location is ignored,
+                    // so configFilePath must point at a file we control. An empty
+                    // path disables all config file I/O (engine defaults).
+                    if (NativeServer.nativeHardwareAccelerationEnabled()) {
+                        builder.configFilePath(writeGeckoPrefs(activity).absolutePath)
+                    } else {
+                        builder.configFilePath("")
+                    }
+
+                    GeckoRuntime.create(activity.applicationContext, builder.build())
+                        .also { runtime = it }
+                }
             }
+        }
+
+        // Writes the GeckoView config file that forces GPU acceleration. WebRender
+        // is GPU compositing; gfx.canvas.accelerated puts the game's 2D canvas on
+        // the GPU; software.opengl keeps the software-WebRender fallback on OpenGL.
+        // Format: https://firefox-source-docs.mozilla.org/mobile/android/geckoview/consumer/automation.html
+        private fun writeGeckoPrefs(activity: Activity): File {
+            val file = File(activity.filesDir, "geckoview-config.yaml")
+            file.writeText(
+                """
+                prefs:
+                  gfx.webrender.all: true
+                  gfx.webrender.software.opengl: true
+                  gfx.canvas.accelerated: true
+                """.trimIndent() + "\n"
+            )
+            return file
         }
     }
 }

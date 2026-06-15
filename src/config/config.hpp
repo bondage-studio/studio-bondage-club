@@ -73,6 +73,18 @@ struct GameServerConfig {
     int ownership_notes_max_len = 4000;
 };
 
+#if defined(__ANDROID__)
+// AndroidConfig holds knobs that only apply to the Android app host. Compiled in
+// only for the NDK build; edited from the panel's Android tab.
+struct AndroidConfig {
+    // Enable GPU acceleration in the GeckoView (bundled-browser) flavor: forces
+    // WebRender + accelerated 2D canvas via Gecko prefs at runtime startup.
+    // Applied by gecko/MainActivity at GeckoRuntime creation, so a change only
+    // takes effect after an app restart.
+    bool hardware_acceleration = true;
+};
+#endif
+
 // Config is the top-level JSON schema. `mode` is stored as a string so unknown
 // values can produce the existing "unsupported mode" error.
 struct Config {
@@ -88,6 +100,9 @@ struct Config {
     GameServerConfig game_server_settings;
     CacheConfig cache;
     PackageConfig package;
+#if defined(__ANDROID__)
+    AndroidConfig android;
+#endif
 
     void validate() const;
 };

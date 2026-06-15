@@ -18,6 +18,10 @@ void to_json(nlohmann::ordered_json& j, const PackageConfig& p);
 void from_json(const nlohmann::ordered_json& j, PackageConfig& p);
 void to_json(nlohmann::ordered_json& j, const GameServerConfig& g);
 void from_json(const nlohmann::ordered_json& j, GameServerConfig& g);
+#if defined(__ANDROID__)
+void to_json(nlohmann::ordered_json& j, const AndroidConfig& a);
+void from_json(const nlohmann::ordered_json& j, AndroidConfig& a);
+#endif
 void to_json(nlohmann::ordered_json& j, const Config& c);
 void from_json(const nlohmann::ordered_json& j, Config& c);
 

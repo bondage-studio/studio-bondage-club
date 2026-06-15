@@ -49,6 +49,10 @@ std::string EmbeddedServer::start(const std::string& config_path, const std::str
         cfg.server.port = port_override;
     }
 
+#if defined(__ANDROID__)
+    hardware_acceleration_ = cfg.android.hardware_acceleration;
+#endif
+
     auto impl = std::make_unique<Impl>(std::move(store));
 
     host::ProviderContext ctx;

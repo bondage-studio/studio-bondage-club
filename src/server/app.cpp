@@ -941,6 +941,20 @@ void App::register_scopes() {
         ConfigScope{"package", [](const cfg_t& c) { return ordered_json(c.package); },
                     [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.package); },
                     [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
+#if defined(__ANDROID__)
+    // android: GeckoView prefs (hardware acceleration) are read once at runtime
+    // startup, so a change can only take effect after an app restart.
+    scopes_.push_back(ConfigScope{"android",
+                                  [](const cfg_t& c) {
+                                      return ordered_json{{"hardwareAcceleration",
+                                                           c.android.hardware_acceleration}};
+                                  },
+                                  [](cfg_t& c, const ordered_json& j) {
+                                      if (auto it = j.find("hardwareAcceleration"); it != j.end())
+                                          c.android.hardware_acceleration = it->get<bool>();
+                                  },
+                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Restart; }});
+#endif
 }
 
 const ConfigScope* App::find_scope(const std::string& name) const {

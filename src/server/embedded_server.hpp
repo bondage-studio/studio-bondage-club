@@ -39,9 +39,16 @@ public:
     // successful start(); the destructor calls it if start() succeeded.
     void stop();
 
+#if defined(__ANDROID__)
+    bool hardware_acceleration() const { return hardware_acceleration_; }
+#endif
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+#if defined(__ANDROID__)
+    bool hardware_acceleration_ = true;
+#endif
 };
 
 }  // namespace sbc::server

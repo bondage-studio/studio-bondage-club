@@ -8,4 +8,6 @@ object NativeServer {
     external fun nativeStart(configDir: String, cacheDir: String, host: String, port: Int): String
 
     external fun nativeStop()
+
+    external fun nativeHardwareAccelerationEnabled(): Boolean
 }

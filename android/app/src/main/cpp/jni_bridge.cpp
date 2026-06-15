@@ -77,6 +77,18 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_studio_bondageclub_NativeServer_na
     }
 }
 
+// Whether config.android.hardwareAcceleration is enabled. The gecko flavor reads
+// this to decide whether to force WebRender/accelerated-canvas Gecko prefs.
+// Defaults to true when the server isn't running (it is started before this is
+// queried in onCreate).
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_studio_bondageclub_NativeServer_nativeHardwareAccelerationEnabled(JNIEnv* /*env*/,
+                                                                           jobject /*thiz*/) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    bool enabled = g_server ? g_server->hardware_acceleration() : true;
+    return enabled ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_studio_bondageclub_NativeServer_nativeStop(JNIEnv* /*env*/, jobject /*thiz*/) {
     std::lock_guard<std::mutex> lock(g_mu);

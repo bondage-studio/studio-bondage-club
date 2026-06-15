@@ -33,6 +33,8 @@ export function scopeSlice(cfg: AppConfig, scope: ConfigScopeName): unknown {
       return { mode: cfg.mode };
     case "package":
       return cfg.package;
+    case "android":
+      return cfg.android ?? { hardwareAcceleration: true };
   }
 }
 
@@ -62,6 +64,9 @@ export function copyScope(dst: AppConfig, src: AppConfig, scope: ConfigScopeName
       break;
     case "package":
       dst.package = structuredClone(src.package);
+      break;
+    case "android":
+      dst.android = src.android ? structuredClone(src.android) : undefined;
       break;
   }
 }

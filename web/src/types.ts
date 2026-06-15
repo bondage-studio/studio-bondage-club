@@ -87,6 +87,13 @@ export interface AppConfig {
   gameServerSettings: GameServerSettings;
   cache: CacheConfig;
   package: PackageConfig;
+  /** Android-app-only settings; only present in the Android build's config. */
+  android?: AndroidSettings;
+}
+
+export interface AndroidSettings {
+  /** Force GeckoView GPU acceleration (WebRender + accelerated 2D canvas). */
+  hardwareAcceleration: boolean;
 }
 
 export type ConfigScopeName =
@@ -95,7 +102,8 @@ export type ConfigScopeName =
   | "gameserver"
   | "gamesettings"
   | "mode"
-  | "package";
+  | "package"
+  | "android";
 
 export interface ScopeUpdateResponse {
   scope: ConfigScopeName;
