@@ -4,11 +4,11 @@
 // fetches its @require libraries and @resource files (through the proxy); then
 // each phase call executes the scripts whose @run-at matches.
 
-import { getUserscriptValues, listUserscripts } from "../api";
-import type { Userscript } from "../types";
-import { buildGmBindings, type ResourceData } from "./gmApi";
-import { parseMetadata, toProxyURL, type RunAt, type UserscriptMetadata } from "./metadata";
-import { createValueStore } from "./values";
+import { getUserscriptValues, listUserscripts } from "@/api";
+import type { Userscript } from "@/types";
+import { buildGmBindings, type ResourceData } from "@/userscripts/gmApi";
+import { parseMetadata, toProxyURL, type RunAt, type UserscriptMetadata } from "@/userscripts/metadata";
+import { createValueStore } from "@/userscripts/values";
 
 interface PreparedScript {
   script: Userscript;

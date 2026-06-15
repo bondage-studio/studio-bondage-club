@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Button } from "../ui/button";
-import { DiffEditor } from "../ui/code-editor";
-import { Window } from "../ui/window";
-import { getPendingUpdate } from "../../api";
-import { errorMessage } from "../../lib/utils";
-import type { Userscript } from "../../types";
+import { Button } from "@/components/ui/button";
+import { DiffEditor } from "@/components/ui/code-editor";
+import { Window } from "@/components/ui/window";
+import { getPendingUpdate } from "@/api";
+import { errorMessage } from "@/lib/utils";
+import type { Userscript } from "@/types";
 
 interface Props {
   script: Userscript;

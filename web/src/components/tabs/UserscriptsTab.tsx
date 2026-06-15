@@ -10,19 +10,19 @@ import {
   reorderUserscripts,
   saveUserscript,
   saveUserscriptSettings,
-} from "../../api";
-import { errorMessage } from "../../lib/utils";
-import { listMenuCommands, onMenuChange, type MenuCommand } from "../../userscripts/menu";
-import { parseMetadata } from "../../userscripts/metadata";
-import type { Userscript } from "../../types";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { useConfirm } from "../ui/confirm";
-import { Input } from "../ui/input";
-import { Switch } from "../ui/switch";
-import { Panel } from "../shared/Panel";
-import { PendingUpdateDialog } from "../userscripts/PendingUpdateDialog";
-import { UserscriptEditor } from "../userscripts/UserscriptEditor";
+} from "@/api";
+import { errorMessage } from "@/lib/utils";
+import { listMenuCommands, onMenuChange, type MenuCommand } from "@/userscripts/menu";
+import { parseMetadata } from "@/userscripts/metadata";
+import type { Userscript } from "@/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Panel } from "@/components/shared/Panel";
+import { PendingUpdateDialog } from "@/components/userscripts/PendingUpdateDialog";
+import { UserscriptEditor } from "@/components/userscripts/UserscriptEditor";
 
 export function UserscriptsTab() {
   const confirm = useConfirm();

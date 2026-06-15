@@ -2,10 +2,10 @@ import { ExternalLink, X } from "lucide-react";
 import { Children, isValidElement, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { cn } from "../../lib/utils";
-import { IS_ANDROID_BUILD } from "../../lib/platform";
-import { useShadowContainer } from "../../shadow-context";
-import { WindowPortal } from "./window-portal";
+import { cn } from "@/lib/utils";
+import { IS_ANDROID_BUILD } from "@/lib/platform";
+import { useShadowContainer } from "@/shadow-context";
+import { WindowPortal } from "@/components/ui/window-portal";
 
 type Slot = "title" | "actions" | "body" | "footer";
 

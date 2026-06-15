@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Label } from "../ui/label";
+import { Label } from "@/components/ui/label";
 
 export function FormField({ label, children }: { label: string; children: ReactNode }) {
   return (

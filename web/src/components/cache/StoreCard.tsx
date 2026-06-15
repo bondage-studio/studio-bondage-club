@@ -1,6 +1,6 @@
 import { HardDrive } from "lucide-react";
-import { formatBytes } from "../../lib/utils";
-import type { StoreStat } from "../../types";
+import { formatBytes } from "@/lib/utils";
+import type { StoreStat } from "@/types";
 
 export function StoreCard({ store }: { store: StoreStat }) {
   return (

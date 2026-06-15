@@ -2,10 +2,10 @@
 // stashed in a per-injection registry; inject.ts destructures its keys as local
 // variables inside the script's closure (so `GM_setValue(...)` etc. just work).
 
-import type { Userscript } from "../types";
-import { registerMenuCommand, unregisterMenuCommand } from "./menu";
-import { toProxyURL, type UserscriptMetadata } from "./metadata";
-import type { ValueStore } from "./values";
+import type { Userscript } from "@/types";
+import { registerMenuCommand, unregisterMenuCommand } from "@/userscripts/menu";
+import { toProxyURL, type UserscriptMetadata } from "@/userscripts/metadata";
+import type { ValueStore } from "@/userscripts/values";
 
 export interface ResourceData {
   text: string;

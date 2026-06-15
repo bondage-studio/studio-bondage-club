@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Button } from "../ui/button";
-import { Window } from "../ui/window";
+import { Button } from "@/components/ui/button";
+import { Window } from "@/components/ui/window";
 
 interface Props {
   oldDir: string;

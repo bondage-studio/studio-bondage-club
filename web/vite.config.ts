@@ -6,6 +6,11 @@ import { resolve } from "path";
 export default defineConfig({
   base: "./",
   plugins: [tailwindcss(), react()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src"),
+    },
+  },
   build: {
     rollupOptions: {
       input: {

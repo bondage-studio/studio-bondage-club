@@ -12,29 +12,29 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { clearCache, loadConfig, loadGameServerStatus, resetConfig, saveConfigScope } from "./api";
-import { CacheMigrateDialog } from "./components/cache/CacheMigrateDialog";
-import { RuleEditor } from "./components/cache/RuleEditor";
-import { StoreEditor } from "./components/cache/StoreEditor";
-import { SectionBar } from "./components/shared/SectionBar";
-import { CacheTab } from "./components/tabs/CacheTab";
-import { ConnectionTab } from "./components/tabs/ConnectionTab";
-import { GameServerTab } from "./components/tabs/GameServerTab";
-import { GameSettingsTab } from "./components/tabs/GameSettingsTab";
-import { AndroidTab } from "./components/tabs/AndroidTab";
-import { ModeTab } from "./components/tabs/ModeTab";
-import { PackageTab } from "./components/tabs/PackageTab";
-import { UserscriptsTab } from "./components/tabs/UserscriptsTab";
-import { Button } from "./components/ui/button";
-import { useConfirm } from "./components/ui/confirm";
-import { MasterDetail } from "./components/ui/master-detail";
-import { ScrollArea } from "./components/ui/scroll-area";
-import { Window } from "./components/ui/window";
-import { copyScope, scopeSlice, tierMessages } from "./config/scope";
-import { useSSE } from "./hooks/useSSE";
-import { errorMessage } from "./lib/utils";
-import { IS_ANDROID_BUILD } from "./lib/platform";
-import { getGameServerMode, setGameServerMode, type GameServerMode } from "./originalPage";
+import { clearCache, loadConfig, loadGameServerStatus, resetConfig, saveConfigScope } from "@/api";
+import { CacheMigrateDialog } from "@/components/cache/CacheMigrateDialog";
+import { RuleEditor } from "@/components/cache/RuleEditor";
+import { StoreEditor } from "@/components/cache/StoreEditor";
+import { SectionBar } from "@/components/shared/SectionBar";
+import { CacheTab } from "@/components/tabs/CacheTab";
+import { ConnectionTab } from "@/components/tabs/ConnectionTab";
+import { GameServerTab } from "@/components/tabs/GameServerTab";
+import { GameSettingsTab } from "@/components/tabs/GameSettingsTab";
+import { AndroidTab } from "@/components/tabs/AndroidTab";
+import { ModeTab } from "@/components/tabs/ModeTab";
+import { PackageTab } from "@/components/tabs/PackageTab";
+import { UserscriptsTab } from "@/components/tabs/UserscriptsTab";
+import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm";
+import { MasterDetail } from "@/components/ui/master-detail";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Window } from "@/components/ui/window";
+import { copyScope, scopeSlice, tierMessages } from "@/config/scope";
+import { useSSE } from "@/hooks/useSSE";
+import { errorMessage } from "@/lib/utils";
+import { IS_ANDROID_BUILD } from "@/lib/platform";
+import { getGameServerMode, setGameServerMode, type GameServerMode } from "@/originalPage";
 import type {
   AppConfig,
   CacheRule,
@@ -42,7 +42,7 @@ import type {
   ConfigScopeName,
   GameServerStatus,
   StoreConfig,
-} from "./types";
+} from "@/types";
 
 type PanelTab = ConfigScopeName | "android" | "userscripts";
 

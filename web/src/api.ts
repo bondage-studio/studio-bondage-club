@@ -9,7 +9,7 @@ import type {
   ScopeUpdateResponse,
   Userscript,
   UserscriptSettings,
-} from "./types";
+} from "@/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {

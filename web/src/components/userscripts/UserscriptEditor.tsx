@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { Button } from "../ui/button";
-import { CodeEditor } from "../ui/code-editor";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Switch } from "../ui/switch";
-import { Window } from "../ui/window";
-import { parseMetadata, toProxyURL } from "../../userscripts/metadata";
-import { errorMessage } from "../../lib/utils";
-import type { Userscript } from "../../types";
+import { Button } from "@/components/ui/button";
+import { CodeEditor } from "@/components/ui/code-editor";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Window } from "@/components/ui/window";
+import { parseMetadata, toProxyURL } from "@/userscripts/metadata";
+import { errorMessage } from "@/lib/utils";
+import type { Userscript } from "@/types";
 
 interface Props {
   initial?: Userscript;

@@ -4,8 +4,8 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, placeholder as cmPlaceholder } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
-import { cn } from "../../lib/utils";
-import { useShadowContainer } from "../../shadow-context";
+import { cn } from "@/lib/utils";
+import { useShadowContainer } from "@/shadow-context";
 
 /** Colors only — heights/layout live in styles.css (`.cm-host-fill`) since the
  *  merge wrapper sits outside the per-editor theme scope. */

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { Button } from "./button";
-import { Window } from "./window";
+import { Button } from "@/components/ui/button";
+import { Window } from "@/components/ui/window";
 
 export interface ConfirmDialogProps {
   title?: string;

@@ -1,5 +1,5 @@
-import { isAndroidRuntime } from "./lib/platform";
-import { injectUserscriptsAt } from "./userscripts/inject";
+import { isAndroidRuntime } from "@/lib/platform";
+import { injectUserscriptsAt } from "@/userscripts/inject";
 
 interface StudioBootstrap {
   homepageSourcePath: string;

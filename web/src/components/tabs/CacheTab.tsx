@@ -1,14 +1,14 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { FormField } from "../shared/FormField";
-import { Panel } from "../shared/Panel";
-import { StoreCard } from "../cache/StoreCard";
-import { CacheMaintenance } from "../cache/CacheMaintenance";
-import { formatBytes } from "../../lib/utils";
-import { IS_ANDROID_BUILD } from "../../lib/platform";
-import type { AppConfig, StatsEvent } from "../../types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FormField } from "@/components/shared/FormField";
+import { Panel } from "@/components/shared/Panel";
+import { StoreCard } from "@/components/cache/StoreCard";
+import { CacheMaintenance } from "@/components/cache/CacheMaintenance";
+import { formatBytes } from "@/lib/utils";
+import { IS_ANDROID_BUILD } from "@/lib/platform";
+import type { AppConfig, StatsEvent } from "@/types";
 
 interface Props {
   form: AppConfig;

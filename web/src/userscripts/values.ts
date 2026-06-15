@@ -3,7 +3,7 @@
 // our async HTTP store. inject.ts preloads the snapshot (one bulk GET) before a
 // script runs, so the cache is fully populated when the script first reads.
 
-import { deleteUserscriptValue, setUserscriptValue } from "../api";
+import { deleteUserscriptValue, setUserscriptValue } from "@/api";
 
 export interface ValueStore {
   // Synchronous Tampermonkey-style API (no network on the hot path).

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, RotateCcw } from "lucide-react";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Panel } from "../shared/Panel";
-import { expireCache, listVersions } from "../../api";
-import type { CacheVersion } from "../../types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/shared/Panel";
+import { expireCache, listVersions } from "@/api";
+import type { CacheVersion } from "@/types";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

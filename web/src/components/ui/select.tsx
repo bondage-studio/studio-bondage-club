@@ -1,8 +1,8 @@
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
-import { cn } from "../../lib/utils";
-import { useShadowContainer } from "../../shadow-context";
+import { cn } from "@/lib/utils";
+import { useShadowContainer } from "@/shadow-context";
 
 const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;

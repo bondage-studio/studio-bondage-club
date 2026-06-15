@@ -1,7 +1,7 @@
-import { Badge } from "../ui/badge";
-import { Panel } from "../shared/Panel";
-import { cn } from "../../lib/utils";
-import type { AppConfig, ConfigResponse, Mode } from "../../types";
+import { Badge } from "@/components/ui/badge";
+import { Panel } from "@/components/shared/Panel";
+import { cn } from "@/lib/utils";
+import type { AppConfig, ConfigResponse, Mode } from "@/types";
 
 const modeLabels: Record<Mode, string> = {
   reverse_proxy_cache: "Reverse proxy",

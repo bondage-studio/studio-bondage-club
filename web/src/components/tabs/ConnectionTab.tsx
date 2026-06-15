@@ -1,8 +1,8 @@
-import { Input } from "../ui/input";
-import { FormField } from "../shared/FormField";
-import { Panel } from "../shared/Panel";
-import { IS_ANDROID_BUILD } from "../../lib/platform";
-import type { AppConfig } from "../../types";
+import { Input } from "@/components/ui/input";
+import { FormField } from "@/components/shared/FormField";
+import { Panel } from "@/components/shared/Panel";
+import { IS_ANDROID_BUILD } from "@/lib/platform";
+import type { AppConfig } from "@/types";
 
 interface Props {
   form: AppConfig;

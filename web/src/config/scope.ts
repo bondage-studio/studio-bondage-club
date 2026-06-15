@@ -1,4 +1,4 @@
-import type { AppConfig, ConfigScopeName } from "../types";
+import type { AppConfig, ConfigScopeName } from "@/types";
 
 export const tierMessages: Record<number, string> = {
   0: "Applied instantly",

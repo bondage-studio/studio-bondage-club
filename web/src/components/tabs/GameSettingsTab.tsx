@@ -1,6 +1,6 @@
-import { GsNumber } from "../shared/GsNumber";
-import { Panel } from "../shared/Panel";
-import type { AppConfig } from "../../types";
+import { GsNumber } from "@/components/shared/GsNumber";
+import { Panel } from "@/components/shared/Panel";
+import type { AppConfig } from "@/types";
 
 interface Props {
   form: AppConfig;

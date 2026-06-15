@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { StatsEvent } from "../types";
+import type { StatsEvent } from "@/types";
 
 export interface SSEState {
   stats: StatsEvent | null;

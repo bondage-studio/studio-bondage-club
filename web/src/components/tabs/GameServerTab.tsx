@@ -1,11 +1,11 @@
-import { Badge } from "../ui/badge";
-import { Input } from "../ui/input";
-import { Switch } from "../ui/switch";
-import { FormField } from "../shared/FormField";
-import { Panel } from "../shared/Panel";
-import { IS_ANDROID_BUILD } from "../../lib/platform";
-import type { GameServerMode } from "../../originalPage";
-import type { AppConfig, GameServerStatus } from "../../types";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { FormField } from "@/components/shared/FormField";
+import { Panel } from "@/components/shared/Panel";
+import { IS_ANDROID_BUILD } from "@/lib/platform";
+import type { GameServerMode } from "@/originalPage";
+import type { AppConfig, GameServerStatus } from "@/types";
 
 interface Props {
   form: AppConfig;

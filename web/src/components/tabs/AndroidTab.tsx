@@ -1,4 +1,4 @@
-import { Panel } from "../shared/Panel";
+import { Panel } from "@/components/shared/Panel";
 
 // Android-only tab. Only built into the Android bundle.
 export function AndroidTab() {

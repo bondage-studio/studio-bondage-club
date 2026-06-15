@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import type { ReactNode } from "react";
-import { ConfirmDialog } from "./ConfirmDialog";
-import type { ConfirmDialogProps } from "./ConfirmDialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import type { ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 
 export type ConfirmOptions = Pick<
   ConfirmDialogProps,

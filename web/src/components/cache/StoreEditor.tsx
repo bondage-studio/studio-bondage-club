@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Window } from "../ui/window";
-import type { StoreConfig } from "../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Window } from "@/components/ui/window";
+import type { StoreConfig } from "@/types";
 
 interface StoreEditorProps {
   initial?: StoreConfig;
