@@ -1,7 +1,7 @@
 import { Panel } from "../shared/Panel";
 
 // Android-only tab. Only built into the Android bundle (gated by androidOnly in
-// App.tsx → IS_ANDROID_BUILD). Scaffold for native-app-specific controls; wire
+// App.tsx -> IS_ANDROID_BUILD). Scaffold for native-app-specific controls; wire
 // real settings here as they appear.
 export function AndroidTab() {
   return (

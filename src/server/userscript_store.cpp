@@ -19,17 +19,22 @@ using nlohmann::json;
 
 namespace {
 
-std::string script_key(const std::string& id) { return "s/" + id; }
-std::string pending_key(const std::string& id) { return "p/" + id; }
-std::string value_prefix(const std::string& id) { return "v/" + id + "/"; }
+std::string script_key(const std::string& id) {
+    return "s/" + id;
+}
+std::string pending_key(const std::string& id) {
+    return "p/" + id;
+}
+std::string value_prefix(const std::string& id) {
+    return "v/" + id + "/";
+}
 std::string value_key(const std::string& id, const std::string& key) {
     return value_prefix(id) + key;
 }
 constexpr const char* kSettingsKey = "meta/settings";
 
 bool starts_with(const leveldb::Slice& s, const std::string& prefix) {
-    return s.size() >= prefix.size() &&
-           std::memcmp(s.data(), prefix.data(), prefix.size()) == 0;
+    return s.size() >= prefix.size() && std::memcmp(s.data(), prefix.data(), prefix.size()) == 0;
 }
 
 std::int64_t now_millis() {
@@ -38,7 +43,9 @@ std::int64_t now_millis() {
         .count();
 }
 
-json default_settings() { return json{{"updateIntervalHours", 6}}; }
+json default_settings() {
+    return json{{"updateIntervalHours", 6}};
+}
 
 }  // namespace
 
@@ -97,6 +104,19 @@ void UserscriptStore::put(const json& script) {
     wo.sync = true;
     leveldb::Status s = db_->Put(wo, script_key(id), script.dump());
     if (!s.ok()) throw Error("userscript put " + id + ": " + s.ToString());
+}
+
+void UserscriptStore::ensure_builtin(const json& spec) {
+    std::string id = spec.value("id", "");
+    if (id.empty()) return;
+    std::lock_guard<std::mutex> lock(mu_);
+    std::string val;
+    leveldb::Status g = db_->Get(leveldb::ReadOptions(), script_key(id), &val);
+    if (g.ok()) return;  // already present — respect any user edits/toggles
+    leveldb::WriteOptions wo;
+    wo.sync = true;
+    leveldb::Status s = db_->Put(wo, script_key(id), spec.dump());
+    if (!s.ok()) throw Error("userscript ensure_builtin " + id + ": " + s.ToString());
 }
 
 void UserscriptStore::remove(const std::string& id) {

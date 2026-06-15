@@ -1,8 +1,10 @@
 import { ExternalLink, X } from "lucide-react";
 import { Children, isValidElement, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { IS_ANDROID_BUILD } from "../../lib/platform";
+import { useShadowContainer } from "../../shadow-context";
 import { WindowPortal } from "./window-portal";
 
 type Slot = "title" | "actions" | "body" | "footer";
@@ -95,6 +97,7 @@ export function Window({
   className,
 }: WindowProps) {
   const canPop = poppable && !IS_ANDROID_BUILD;
+  const shadowContainer = useShadowContainer();
 
   const ref = useRef<HTMLDivElement>(null);
   const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -240,7 +243,7 @@ export function Window({
   style.maxWidth = "calc(100vw - 1rem)";
   style.maxHeight = "calc(100vh - 1rem)";
 
-  return (
+  const windowEl = (
     <div
       ref={ref}
       role="dialog"
@@ -264,6 +267,12 @@ export function Window({
       />
     </div>
   );
+
+  // Portal to the shadow root so `position: fixed` resolves against the viewport.
+  // A transformed ancestor (e.g. a centered parent Window using
+  // `translate(-50%, -50%)`) would otherwise become the containing block, pinning
+  // this window inside it and clipping it against the parent's `overflow-hidden`.
+  return shadowContainer ? createPortal(windowEl, shadowContainer) : windowEl;
 }
 
 Window.Title = WindowTitle;

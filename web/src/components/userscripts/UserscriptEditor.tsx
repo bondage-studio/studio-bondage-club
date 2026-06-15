@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "../ui/button";
+import { CodeEditor } from "../ui/code-editor";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
@@ -22,10 +23,11 @@ function newId(): string {
 
 export function UserscriptEditor({ initial, onSave, onClose }: Props) {
   const isEdit = !!initial;
+  const isBuiltin = !!initial?.builtin;
   const [source, setSource] = useState(initial?.source ?? "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [autoUpdate, setAutoUpdate] = useState(initial?.autoUpdate ?? false);
-  const [installUrl, setInstallUrl] = useState("");
+  const [installUrl, setInstallUrl] = useState(initial?.downloadURL ?? initial?.updateURL ?? "");
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,10 +64,10 @@ export function UserscriptEditor({ initial, onSave, onClose }: Props) {
       source,
       enabled,
       autoUpdate,
-      downloadURL: meta.downloadURL || installUrl.trim() || initial?.downloadURL,
+      downloadURL: installUrl.trim() || meta.downloadURL || initial?.downloadURL,
       updateURL: meta.updateURL || initial?.updateURL,
       version: meta.version || initial?.version,
-      sortOrder: initial?.sortOrder
+      sortOrder: initial?.sortOrder,
     };
     try {
       await onSave(script);
@@ -82,43 +84,47 @@ export function UserscriptEditor({ initial, onSave, onClose }: Props) {
 
       <Window.Body className="overflow-y-auto p-4">
         <div className="grid gap-3">
-          {!isEdit && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="us-install-url">Install from URL (optional)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="us-install-url"
-                  value={installUrl}
-                  onChange={(e) => setInstallUrl(e.target.value)}
-                  placeholder="https://example.com/script.user.js"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleInstall()}
-                  disabled={installing || !installUrl.trim()}
-                >
-                  {installing ? "Fetching…" : "Fetch"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Fetches the source into the editor for review. Nothing is saved until you click{" "}
-                {isEdit ? "Update" : "Add"}.
-              </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="us-install-url">Source URL (for updates)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="us-install-url"
+                value={installUrl}
+                onChange={(e) => setInstallUrl(e.target.value)}
+                placeholder="https://example.com/script.user.js"
+                spellCheck={false}
+                autoComplete="off"
+                readOnly={isBuiltin}
+                disabled={isBuiltin}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleInstall()}
+                disabled={installing || !installUrl.trim()}
+              >
+                {installing ? "Fetching…" : "Fetch"}
+              </Button>
             </div>
-          )}
+            <p className="text-xs text-muted-foreground">
+              {isBuiltin
+                ? "This is a default script — its source URL and name are fixed. You can still edit the source, toggle it, and pull updates."
+                : "Used to check for and download updates."}{" "}
+              <strong>Fetch</strong> pulls the latest source into the editor for review — nothing is
+              saved until you click {isEdit ? "Update" : "Add"}.
+            </p>
+          </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="us-source">Source</Label>
-            <textarea
-              id="us-source"
+            <Label>Source</Label>
+            <CodeEditor
               value={source}
-              onChange={(e) => setSource(e.target.value)}
-              spellCheck={false}
-              className="h-64 w-full resize-y rounded-md border border-input bg-background p-2 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="// ==UserScript==&#10;// @name Example&#10;// @run-at document-end&#10;// ==/UserScript=="
+              onChange={setSource}
+              autoFocus={!isEdit}
+              placeholder={
+                "// ==UserScript==\n// @name Example\n// @run-at document-end\n// ==/UserScript=="
+              }
+              className="h-80"
             />
           </div>
 

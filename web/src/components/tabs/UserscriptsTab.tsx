@@ -9,14 +9,10 @@ import {
   listUserscripts,
   reorderUserscripts,
   saveUserscript,
-  saveUserscriptSettings
+  saveUserscriptSettings,
 } from "../../api";
 import { errorMessage } from "../../lib/utils";
-import {
-  listMenuCommands,
-  onMenuChange,
-  type MenuCommand
-} from "../../userscripts/menu";
+import { listMenuCommands, onMenuChange, type MenuCommand } from "../../userscripts/menu";
 import { parseMetadata } from "../../userscripts/metadata";
 import type { Userscript } from "../../types";
 import { Badge } from "../ui/badge";
@@ -100,7 +96,7 @@ export function UserscriptsTab() {
       title: "Delete userscript?",
       body: `"${script.name}" and its stored values will be permanently removed.`,
       confirmLabel: "Delete",
-      destructive: true
+      destructive: true,
     });
     if (!ok) return;
     await withBusy(async () => {
@@ -128,7 +124,7 @@ export function UserscriptsTab() {
       setMessage(
         summary.updates.length > 0
           ? `${summary.updates.length} update(s) available.`
-          : `Checked ${summary.checked} script(s); all up to date.`
+          : `Checked ${summary.checked} script(s); all up to date.`,
       );
     });
   }
@@ -159,12 +155,7 @@ export function UserscriptsTab() {
         title="Scripts"
         action={
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void checkUpdates()}
-              disabled={busy}
-            >
+            <Button variant="outline" size="sm" onClick={() => void checkUpdates()} disabled={busy}>
               <RefreshCw size={13} />
               Check for updates
             </Button>
@@ -218,6 +209,11 @@ export function UserscriptsTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">{script.name}</span>
+                      {script.builtin && (
+                        <Badge variant="outline" className="shrink-0">
+                          Default
+                        </Badge>
+                      )}
                       {script.version && (
                         <span className="shrink-0 text-xs text-muted-foreground">
                           v{script.version}
@@ -279,14 +275,16 @@ export function UserscriptsTab() {
                     >
                       <Pencil size={14} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void remove(script)}
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                    {!script.builtin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void remove(script)}
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    )}
                   </div>
                 </li>
               );

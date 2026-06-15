@@ -1,7 +1,7 @@
 // Platform flags. Two layers, deliberately separate:
 //
 //   - PLATFORM / IS_ANDROID_BUILD: build-time. Set via Vite mode
-//     (`vite build --mode android` → VITE_PLATFORM=android from .env.android).
+//     (`vite build --mode android` -> VITE_PLATFORM=android from .env.android).
 //     Vite inlines import.meta.env.VITE_PLATFORM as a string literal, so
 //     branches guarded by IS_ANDROID_BUILD are tree-shaken out of the bundle
 //     that doesn't need them. Use this to strip whole features from a build.

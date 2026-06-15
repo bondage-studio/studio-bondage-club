@@ -22,6 +22,7 @@
 #include "server/gameserver/game_socket_local.hpp"
 #include "server/homepage.hpp"
 #include "server/remote_proxy.hpp"
+#include "server/userscript_defaults.hpp"
 
 namespace sbc::server {
 
@@ -119,8 +120,8 @@ std::string query_value(const std::string& raw_query, const std::string& name) {
     std::size_t pos = 0;
     while (pos <= raw_query.size()) {
         std::size_t amp = raw_query.find('&', pos);
-        std::string pair = raw_query.substr(
-            pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        std::string pair =
+            raw_query.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
         std::size_t eq = pair.find('=');
         std::string key = eq == std::string::npos ? pair : pair.substr(0, eq);
         if (key == name) return eq == std::string::npos ? std::string() : pair.substr(eq + 1);
@@ -180,8 +181,8 @@ void migrate_dir(const std::string& old_dir, const std::string& new_dir) {
     if (!ec) return;
     // Cross-device or non-empty target: fall back to a recursive copy + remove.
     fs::create_directories(new_dir, ec);
-    fs::copy(old_dir, new_dir,
-             fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+    fs::copy(old_dir, new_dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing,
+             ec);
     if (ec) throw Error("migrate dir " + old_dir + " -> " + new_dir + ": " + ec.message());
     fs::remove_all(old_dir, ec);
 }
@@ -217,15 +218,16 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     game_ = std::make_shared<gameserver::GameApp>(ctx_.io->executor(), *ctx_.blocking, game_dir,
                                                   cfg.game_server_settings);
     userscripts_ = UserscriptStore::open(config::userscript_storage_dir(cfg));
+    for (const auto& spec : builtin_userscripts()) userscripts_->ensure_builtin(spec);
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
 
     // The updater reads the live config (for socks5) via snapshot(); start it
     // only once state_ is set. It records pending updates only — never applies.
-    userscript_updater_ = std::make_unique<UserscriptUpdater>(
-        ctx_.io->executor(), *ctx_.blocking, *ctx_.tls, userscripts_,
-        [this]() { return snapshot()->cfg; });
+    userscript_updater_ =
+        std::make_unique<UserscriptUpdater>(ctx_.io->executor(), *ctx_.blocking, *ctx_.tls,
+                                            userscripts_, [this]() { return snapshot()->cfg; });
     userscript_updater_->start();
 }
 
@@ -351,7 +353,8 @@ asio::awaitable<void> App::handle_api(Request& req, ResponseWriter& w, const Sta
         }
     } else if (path.rfind("/api/config/", 0) == 0) {
         if (req.method == "PUT") {
-            co_await handle_put_config_scope(req, w, path.substr(std::string("/api/config/").size()));
+            co_await handle_put_config_scope(req, w,
+                                             path.substr(std::string("/api/config/").size()));
         } else {
             co_await method_not_allowed(w);
         }
@@ -465,8 +468,9 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
                     nlohmann::json e = s;
                     std::string id = s.value("id", "");
                     if (auto p = store->get_pending(id)) {
-                        e["pendingUpdate"] = {{"version", p->value("version", "")},
-                                              {"fetchedAt", p->value("fetchedAt", std::int64_t{0})}};
+                        e["pendingUpdate"] = {
+                            {"version", p->value("version", "")},
+                            {"fetchedAt", p->value("fetchedAt", std::int64_t{0})}};
                     }
                     out.push_back(std::move(e));
                 }
@@ -489,8 +493,31 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
                 co_await write_error(w, 400, "userscript requires a non-empty id");
                 co_return;
             }
+            nlohmann::json saved;
             try {
-                co_await net::run_blocking(bp, [store, script]() { store->put(script); });
+                saved = co_await net::run_blocking(bp, [store, script]() mutable {
+                    // Built-in defaults: id, name and the source URLs are immutable,
+                    // and the flag can't be forged onto a user script. Everything
+                    // else (source, enabled, autoUpdate, version, sortOrder) is the
+                    // caller's to change.
+                    auto existing = store->get(script.value("id", ""));
+                    if (existing && existing->value("builtin", false)) {
+                        script["builtin"] = true;
+                        script["name"] = existing->value("name", script.value("name", ""));
+                        if (existing->contains("downloadURL"))
+                            script["downloadURL"] = (*existing)["downloadURL"];
+                        else
+                            script.erase("downloadURL");
+                        if (existing->contains("updateURL"))
+                            script["updateURL"] = (*existing)["updateURL"];
+                        else
+                            script.erase("updateURL");
+                    } else {
+                        script.erase("builtin");
+                    }
+                    store->put(script);
+                    return script;
+                });
             } catch (const std::exception& e) {
                 err = e.what();
             }
@@ -498,11 +525,19 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
                 co_await write_error(w, 500, err);
                 co_return;
             }
-            co_await write_json(w, 200, as_ordered(script));
+            co_await write_json(w, 200, as_ordered(saved));
         } else if (req.method == "DELETE") {
             std::string id = percent_decode(query_value(req.raw_query, "script"));
             if (id.empty()) {
                 co_await write_error(w, 400, "missing script id");
+                co_return;
+            }
+            bool is_builtin = co_await net::run_blocking(bp, [store, id]() {
+                auto existing = store->get(id);
+                return existing && existing->value("builtin", false);
+            });
+            if (is_builtin) {
+                co_await write_error(w, 403, "cannot delete a built-in userscript");
                 co_return;
             }
             co_await net::run_blocking(bp, [store, id]() { store->remove(id); });
@@ -546,8 +581,8 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
             co_return;
         }
         std::string id = percent_decode(query_value(req.raw_query, "script"));
-        auto pending = co_await net::run_blocking(
-            bp, [store, id]() { return store->get_pending(id); });
+        auto pending =
+            co_await net::run_blocking(bp, [store, id]() { return store->get_pending(id); });
         if (!pending) {
             co_await not_found(w);
             co_return;
@@ -562,8 +597,8 @@ asio::awaitable<void> App::handle_userscripts(Request& req, ResponseWriter& w) {
             co_return;
         }
         std::string id = percent_decode(query_value(req.raw_query, "script"));
-        auto updated = co_await net::run_blocking(
-            bp, [store, id]() { return store->apply_pending(id); });
+        auto updated =
+            co_await net::run_blocking(bp, [store, id]() { return store->apply_pending(id); });
         if (!updated) {
             co_await write_error(w, 404, "no pending update for script");
             co_return;
@@ -839,72 +874,77 @@ asio::awaitable<void> App::handle_reset_config(ResponseWriter& w) {
 
 void App::register_scopes() {
     using cfg_t = config::Config;
-    scopes_.push_back(ConfigScope{
-        "connection",
-        [](const cfg_t& c) {
-            ordered_json j;
-            j["host"] = c.server.host;
-            j["port"] = c.server.port;
-            j["adminBasePath"] = c.server.admin_base_path;
-            j["upstream"] = c.upstream;
-            j["socks5Proxy"] = c.socks5_proxy;
-            j["gameServer"] = c.game_server;
-            return j;
-        },
-        [](cfg_t& c, const ordered_json& j) {
-            if (auto it = j.find("host"); it != j.end()) c.server.host = it->get<std::string>();
-            if (auto it = j.find("port"); it != j.end()) c.server.port = it->get<int>();
-            if (auto it = j.find("adminBasePath"); it != j.end())
-                c.server.admin_base_path = it->get<std::string>();
-            if (auto it = j.find("upstream"); it != j.end()) c.upstream = it->get<std::string>();
-            if (auto it = j.find("socks5Proxy"); it != j.end())
-                c.socks5_proxy = it->get<std::string>();
-            if (auto it = j.find("gameServer"); it != j.end()) c.game_server = it->get<std::string>();
-        },
-        [](const cfg_t& o, const cfg_t& n) {
-            return (o.server.host != n.server.host || o.server.port != n.server.port)
-                       ? UpdateTier::Restart
-                       : UpdateTier::Live;
-        }});
-    scopes_.push_back(ConfigScope{
-        "cache", [](const cfg_t& c) { return ordered_json(c.cache); },
-        [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.cache); },
-        [](const cfg_t& o, const cfg_t& n) {
-            return (o.cache.dir != n.cache.dir ||
-                    store_topology_changed(o.cache.stores, n.cache.stores))
-                       ? UpdateTier::Recreate
-                       : UpdateTier::Live;
-        }});
+    scopes_.push_back(ConfigScope{"connection",
+                                  [](const cfg_t& c) {
+                                      ordered_json j;
+                                      j["host"] = c.server.host;
+                                      j["port"] = c.server.port;
+                                      j["adminBasePath"] = c.server.admin_base_path;
+                                      j["upstream"] = c.upstream;
+                                      j["socks5Proxy"] = c.socks5_proxy;
+                                      j["gameServer"] = c.game_server;
+                                      return j;
+                                  },
+                                  [](cfg_t& c, const ordered_json& j) {
+                                      if (auto it = j.find("host"); it != j.end())
+                                          c.server.host = it->get<std::string>();
+                                      if (auto it = j.find("port"); it != j.end())
+                                          c.server.port = it->get<int>();
+                                      if (auto it = j.find("adminBasePath"); it != j.end())
+                                          c.server.admin_base_path = it->get<std::string>();
+                                      if (auto it = j.find("upstream"); it != j.end())
+                                          c.upstream = it->get<std::string>();
+                                      if (auto it = j.find("socks5Proxy"); it != j.end())
+                                          c.socks5_proxy = it->get<std::string>();
+                                      if (auto it = j.find("gameServer"); it != j.end())
+                                          c.game_server = it->get<std::string>();
+                                  },
+                                  [](const cfg_t& o, const cfg_t& n) {
+                                      return (o.server.host != n.server.host ||
+                                              o.server.port != n.server.port)
+                                                 ? UpdateTier::Restart
+                                                 : UpdateTier::Live;
+                                  }});
+    scopes_.push_back(
+        ConfigScope{"cache", [](const cfg_t& c) { return ordered_json(c.cache); },
+                    [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.cache); },
+                    [](const cfg_t& o, const cfg_t& n) {
+                        return (o.cache.dir != n.cache.dir ||
+                                store_topology_changed(o.cache.stores, n.cache.stores))
+                                   ? UpdateTier::Recreate
+                                   : UpdateTier::Live;
+                    }});
     // gameserver: the local/remote routing toggle (read per request -> live) and
     // the embedded game DB storage path (hot-reloaded/migrated by apply_config,
     // independent of the cache provider, so it stays a Live tier).
-    scopes_.push_back(ConfigScope{
-        "gameserver",
-        [](const cfg_t& c) {
-            return ordered_json{{"localGameServer", c.local_game_server},
-                                {"gameServerStoragePath", c.game_server_storage_path}};
-        },
-        [](cfg_t& c, const ordered_json& j) {
-            if (auto it = j.find("localGameServer"); it != j.end())
-                c.local_game_server = it->get<bool>();
-            if (auto it = j.find("gameServerStoragePath"); it != j.end())
-                c.game_server_storage_path = it->get<std::string>();
-        },
-        [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
+    scopes_.push_back(ConfigScope{"gameserver",
+                                  [](const cfg_t& c) {
+                                      return ordered_json{
+                                          {"localGameServer", c.local_game_server},
+                                          {"gameServerStoragePath", c.game_server_storage_path}};
+                                  },
+                                  [](cfg_t& c, const ordered_json& j) {
+                                      if (auto it = j.find("localGameServer"); it != j.end())
+                                          c.local_game_server = it->get<bool>();
+                                      if (auto it = j.find("gameServerStoragePath"); it != j.end())
+                                          c.game_server_storage_path = it->get<std::string>();
+                                  },
+                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
     scopes_.push_back(ConfigScope{
         "gamesettings", [](const cfg_t& c) { return ordered_json(c.game_server_settings); },
         [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.game_server_settings); },
         [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
-    scopes_.push_back(ConfigScope{
-        "mode", [](const cfg_t& c) { return ordered_json{{"mode", c.mode}}; },
-        [](cfg_t& c, const ordered_json& j) {
-            if (auto it = j.find("mode"); it != j.end()) c.mode = it->get<std::string>();
-        },
-        [](const cfg_t&, const cfg_t&) { return UpdateTier::Recreate; }});
-    scopes_.push_back(ConfigScope{
-        "package", [](const cfg_t& c) { return ordered_json(c.package); },
-        [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.package); },
-        [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
+    scopes_.push_back(ConfigScope{"mode",
+                                  [](const cfg_t& c) { return ordered_json{{"mode", c.mode}}; },
+                                  [](cfg_t& c, const ordered_json& j) {
+                                      if (auto it = j.find("mode"); it != j.end())
+                                          c.mode = it->get<std::string>();
+                                  },
+                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Recreate; }});
+    scopes_.push_back(
+        ConfigScope{"package", [](const cfg_t& c) { return ordered_json(c.package); },
+                    [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.package); },
+                    [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
 }
 
 const ConfigScope* App::find_scope(const std::string& name) const {

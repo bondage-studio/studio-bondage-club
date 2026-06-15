@@ -192,6 +192,11 @@ export interface Userscript {
   version?: string;
   updatedAt?: number;
   sortOrder?: number;
+  /**
+   * Built-in default script: its name and source URL are immutable and it cannot
+   * be deleted. Source, enable/disable, auto-update, and updates still apply.
+   */
+  builtin?: boolean;
   /** Present when the background checker has a newer version waiting for review. */
   pendingUpdate?: PendingUpdateSummary;
 }

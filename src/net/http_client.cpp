@@ -70,7 +70,7 @@ void pool_put(std::mutex& mu,
               std::unordered_multimap<std::string, PoolEntry<Stream>>& map, const std::string& key,
               std::unique_ptr<Stream> stream) {
     std::lock_guard<std::mutex> lk(mu);
-    if (map.count(key) >= kMaxIdlePerHost) return;  // unique_ptr drops → socket closes
+    if (map.count(key) >= kMaxIdlePerHost) return;  // unique_ptr drops -> socket closes
     map.insert({key, PoolEntry<Stream>{std::move(stream), SteadyClock::now()}});
 }
 
@@ -196,7 +196,7 @@ asio::awaitable<ClientResponse> HttpClient::fetch_plain(const std::string& host,
         if (eptr) {
             tcp_shutdown(*conn);
             conn.reset();
-            if (reused && !committed) continue;  // stale idle connection → retry once, fresh
+            if (reused && !committed) continue;  // stale idle connection -> retry once, fresh
             std::rethrow_exception(eptr);
         }
         if (reusable) {
@@ -238,7 +238,7 @@ asio::awaitable<ClientResponse> HttpClient::fetch_tls(const std::string& host, s
         if (eptr) {
             tcp_shutdown(beast::get_lowest_layer(*conn));
             conn.reset();
-            if (reused && !committed) continue;  // stale idle connection → retry once, fresh
+            if (reused && !committed) continue;  // stale idle connection -> retry once, fresh
             std::rethrow_exception(eptr);
         }
         if (reusable) {

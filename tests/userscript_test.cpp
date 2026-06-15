@@ -25,13 +25,14 @@ fs::path make_temp_dir(const std::string& tag) {
 }
 
 json sample_script(const std::string& id, int sort_order = 0) {
-    return json{{"id", id},
-                {"name", "Script " + id},
-                {"source", "// ==UserScript==\n// @version 1.0.0\n// ==/UserScript==\nconsole.log(1)"},
-                {"enabled", true},
-                {"autoUpdate", false},
-                {"version", "1.0.0"},
-                {"sortOrder", sort_order}};
+    return json{
+        {"id", id},
+        {"name", "Script " + id},
+        {"source", "// ==UserScript==\n// @version 1.0.0\n// ==/UserScript==\nconsole.log(1)"},
+        {"enabled", true},
+        {"autoUpdate", false},
+        {"version", "1.0.0"},
+        {"sortOrder", sort_order}};
 }
 
 }  // namespace
@@ -62,11 +63,11 @@ SBC_TEST(userscript_version_compare) {
     CHECK(version_newer("1.0.1", "1.0.0"));
     CHECK(version_newer("1.1.0", "1.0.9"));
     CHECK(version_newer("2.0.0", "1.9.9"));
-    CHECK(version_newer("1.0.0", ""));          // any version beats none
-    CHECK(version_newer("1.0.10", "1.0.9"));    // numeric, not lexical
-    CHECK(!version_newer("1.0.0", "1.0.0"));    // equal
-    CHECK(!version_newer("1.0.0", "1.0.1"));    // older
-    CHECK(!version_newer("", "1.0.0"));         // empty candidate
+    CHECK(version_newer("1.0.0", ""));        // any version beats none
+    CHECK(version_newer("1.0.10", "1.0.9"));  // numeric, not lexical
+    CHECK(!version_newer("1.0.0", "1.0.0"));  // equal
+    CHECK(!version_newer("1.0.0", "1.0.1"));  // older
+    CHECK(!version_newer("", "1.0.0"));       // empty candidate
     CHECK(!version_newer("", ""));
 }
 
@@ -156,9 +157,7 @@ SBC_TEST(userscript_store_pending_and_apply) {
     store->put(sample_script("a"));  // version 1.0.0
 
     CHECK(!store->get_pending("a").has_value());
-    json pending = {{"version", "2.0.0"},
-                    {"source", "// new source v2"},
-                    {"fetchedAt", 123456}};
+    json pending = {{"version", "2.0.0"}, {"source", "// new source v2"}, {"fetchedAt", 123456}};
     store->set_pending("a", pending);
 
     auto got = store->get_pending("a");
@@ -194,6 +193,33 @@ SBC_TEST(userscript_store_dismiss_pending) {
     CHECK(!store->get_pending("a").has_value());
     // definition unchanged
     CHECK(store->get("a")->value("version", "") == "1.0.0");
+}
+
+SBC_TEST(userscript_store_ensure_builtin) {
+    auto dir = make_temp_dir("builtin");
+    auto store = UserscriptStore::open(dir.string());
+
+    json spec = sample_script("builtin-x");
+    spec["builtin"] = true;
+    spec["enabled"] = false;
+
+    // First call seeds it.
+    store->ensure_builtin(spec);
+    auto got = store->get("builtin-x");
+    CHECK(got.has_value());
+    CHECK(got->value("builtin", false));
+    CHECK(!got->value("enabled", true));
+
+    // A user edit (enable + change source) must survive a re-seed.
+    json edited = *got;
+    edited["enabled"] = true;
+    edited["source"] = "// user edited";
+    store->put(edited);
+
+    store->ensure_builtin(spec);  // id already present -> no-op
+    auto after = store->get("builtin-x");
+    CHECK(after->value("enabled", false));
+    CHECK(after->value("source", "") == "// user edited");
 }
 
 SBC_TEST(userscript_store_settings_persist) {

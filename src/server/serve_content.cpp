@@ -40,7 +40,7 @@ bool etag_matches(const std::string& header_value, const std::string& etag) {
 
 // parse_single_range parses the first range of a "bytes=" Range header.
 // Returns false if the header is malformed/unsupported; sets satisfiable=false
-// for a syntactically valid but unsatisfiable range (→ 416).
+// for a syntactically valid but unsatisfiable range (-> 416).
 bool parse_single_range(const std::string& header, std::int64_t total, std::int64_t& start,
                         std::int64_t& end, bool& satisfiable) {
     satisfiable = true;

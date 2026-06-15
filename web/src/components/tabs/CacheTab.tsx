@@ -204,7 +204,7 @@ export function CacheTab({
                     {rule.keyMode === "path" && <Badge variant="secondary">key:path</Badge>}
                     {rule.version && <Badge variant="outline">ver:{rule.version}</Badge>}
                     {rule.keyPattern && <Badge variant="outline">key-rewrite</Badge>}
-                    {rule.store && <Badge variant="secondary">→{rule.store}</Badge>}
+                    {rule.store && <Badge variant="secondary">{">"}{rule.store}</Badge>}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button

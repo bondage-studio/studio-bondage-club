@@ -27,9 +27,9 @@ option(SBC_BUILD_TESTS   "Build unit tests" ON)
 
 # Runtime (C/C++ standard library) linkage. This is independent of how the vcpkg
 # dependencies are linked — that is governed by the vcpkg triplet (see docs/BUILD.md).
-#   ON  → static runtime: libstdc++/libgcc (GCC) or the static MSVC CRT are baked
+#   ON -> static runtime: libstdc++/libgcc (GCC) or the static MSVC CRT are baked
 #         into the binary, giving a self-contained executable.
-#   OFF → dynamic runtime: the binary links the shared system C/C++ runtime.
+#  OFF -> dynamic runtime: the binary links the shared system C/C++ runtime.
 # Note: macOS has no static libSystem, so this is a no-op on Apple platforms.
 option(SBC_STATIC_RUNTIME "Statically link the C/C++ runtime (libstdc++/libgcc, MSVC CRT)" OFF)
 
@@ -39,10 +39,10 @@ option(SBC_STATIC_RUNTIME "Statically link the C/C++ runtime (libstdc++/libgcc, 
 option(SBC_FULLY_STATIC "Link the executable fully statically, including libc (-static; musl/Linux)" OFF)
 
 if(SBC_STATIC_RUNTIME AND MSVC)
-  # MultiThreaded[Debug]  → /MT[d]  (static CRT)
+  # MultiThreaded[Debug]  -> /MT[d]  (static CRT)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 elseif(MSVC)
-  # MultiThreaded[Debug]DLL → /MD[d] (dynamic CRT, the MSVC default)
+  # MultiThreaded[Debug]DLL -> /MD[d] (dynamic CRT, the MSVC default)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
@@ -53,6 +53,20 @@ find_package(Boost REQUIRED COMPONENTS system url)
 # OpenSSL is linked or shipped. wintls is header-only with no CMake config, so it
 # is consumed purely through the vcpkg include path + the system libs below.
 if(NOT WIN32)
+  if(APPLE AND NOT OPENSSL_ROOT_DIR AND NOT DEFINED CACHE{OPENSSL_ROOT_DIR})
+    find_program(BREW_EXECUTABLE brew)
+    if(BREW_EXECUTABLE)
+      execute_process(
+        COMMAND "${BREW_EXECUTABLE}" --prefix openssl@3
+        OUTPUT_VARIABLE _brew_openssl_prefix
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+      if(_brew_openssl_prefix AND IS_DIRECTORY "${_brew_openssl_prefix}")
+        set(OPENSSL_ROOT_DIR "${_brew_openssl_prefix}" CACHE PATH "OpenSSL root (Homebrew)")
+        message(STATUS "Using Homebrew OpenSSL at ${OPENSSL_ROOT_DIR}")
+      endif()
+    endif()
+  endif()
   find_package(OpenSSL REQUIRED)
 endif()
 find_package(leveldb CONFIG REQUIRED)

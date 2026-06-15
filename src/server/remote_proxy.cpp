@@ -1,5 +1,7 @@
 #include "server/remote_proxy.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <cctype>
 
@@ -16,10 +18,9 @@ namespace asio = boost::asio;
 namespace {
 
 bool rp_hop(std::string_view key) {
-    static const std::array<const char*, 8> hop = {"connection", "keep-alive",
-                                                   "proxy-authenticate", "proxy-authorization",
-                                                   "te",         "trailer",
-                                                   "transfer-encoding", "upgrade"};
+    static const std::array<const char*, 8> hop = {
+        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+        "te",         "trailer",    "transfer-encoding",  "upgrade"};
     for (const char* h : hop) {
         if (iequals(key, h)) return true;
     }
@@ -78,8 +79,8 @@ asio::awaitable<void> serve_direct_remote(Request& req, ResponseWriter& w, const
     if (method_has_body(req.method)) creq.body = req.body;
 
     bool is_head = req.is_head();
-    net::HeadHandler on_head =
-        [&w, is_head](const net::ClientResponse& resp) -> asio::awaitable<void> {
+    net::HeadHandler on_head = [&w,
+                                is_head](const net::ClientResponse& resp) -> asio::awaitable<void> {
         (void)is_head;
         HeaderMap h;
         for (const auto& e : resp.headers.entries()) {
@@ -105,6 +106,15 @@ asio::awaitable<void> serve_direct_remote(Request& req, ResponseWriter& w, const
         ferr = std::current_exception();
     }
     if (ferr) {
+        std::string detail;
+        try {
+            std::rethrow_exception(ferr);
+        } catch (const std::exception& e) {
+            detail = e.what();
+        } catch (...) {
+            detail = "unknown exception";
+        }
+        spdlog::warn("remote_proxy: upstream fetch failed for {}: {}", target.string(), detail);
         if (!w.header_sent()) co_await write_error(w, 502, "upstream request failed");
         co_return;
     }

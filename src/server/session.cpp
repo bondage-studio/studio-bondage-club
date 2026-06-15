@@ -170,7 +170,7 @@ asio::awaitable<void> Session::run() {
         auto [ec, n] = co_await http::async_read(stream_, buffer_, parser,
                                                  asio::as_tuple(asio::use_awaitable));
         (void)n;
-        if (ec) break;  // EOF / timeout / parse error → close
+        if (ec) break;  // EOF / timeout / parse error -> close
 
         Request req = build_request(parser.get());
         {

@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <!-- 定义滤镜与渐变效果 -->
+  <defs>
+    <!-- 基础投影，增加立体层级感 -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- 亮金属渐变 (用于O型环) -->
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="25%" stop-color="#a1a1aa" />
+      <stop offset="50%" stop-color="#e4e4e7" />
+      <stop offset="75%" stop-color="#71717a" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+
+    <!-- 暗金属渐变 (用于背后齿轮) -->
+    <linearGradient id="dark-metal" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3f3f46" />
+      <stop offset="50%" stop-color="#52525b" />
+      <stop offset="100%" stop-color="#27272a" />
+    </linearGradient>
+  </defs>
+
+  <!-- 1. 深色极简背景 -->
+  <rect width="500" height="500" rx="40" fill="#111113" />
+
+  <!-- 2. 背景雷达/工作室科技辅助线 -->
+  <circle cx="250" cy="220" r="110" fill="none" stroke="#27272a" stroke-width="1.5" />
+  <circle cx="250" cy="220" r="150" fill="none" stroke="#27272a" stroke-width="1.5" stroke-dasharray="4 6" />
+
+  <!-- 3. 顶部悬吊小铁环 -->
+  <circle cx="250" cy="55" r="12" fill="none" stroke="url(#metal)" stroke-width="4" filter="url(#shadow)" />
+
+  <!-- 4. 暗金属齿轮 (底层) -->
+  <g fill="url(#dark-metal)" filter="url(#shadow)">
+    <rect x="242" y="135" width="16" height="170" rx="4" />
+    <rect x="242" y="135" width="16" height="170" rx="4" transform="rotate(45 250 220)" />
+    <rect x="242" y="135" width="16" height="170" rx="4" transform="rotate(90 250 220)" />
+    <rect x="242" y="135" width="16" height="170" rx="4" transform="rotate(135 250 220)" />
+  </g>
+
+  <!-- 5. 中心切孔 (隐藏齿轮交叉部分，保留齿牙) -->
+  <circle cx="250" cy="220" r="56" fill="#111113" />
+
+  <!-- 6. 核心主体：金属O型环 -->
+  <circle cx="250" cy="220" r="65" fill="none" stroke="url(#metal)" stroke-width="18" filter="url(#shadow)" />
+  <!-- O型环金属高光边线 -->
+  <circle cx="250" cy="220" r="56" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.4" />
+  <circle cx="250" cy="220" r="74" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.3" />
+
+  <!-- 7. 主题：代码符号 </> (带多层霓虹发光效果) -->
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- 底层暗红泛光 -->
+    <g stroke="#9f1239" stroke-width="12">
+      <path d="M 225 195 L 195 220 L 225 245" />
+      <path d="M 275 195 L 305 220 L 275 245" />
+      <line x1="262" y1="182" x2="238" y2="258" />
+    </g>
+    <!-- 中层基准红 -->
+    <g stroke="#e11d48" stroke-width="6">
+      <path d="M 225 195 L 195 220 L 225 245" />
+      <path d="M 275 195 L 305 220 L 275 245" />
+      <line x1="262" y1="182" x2="238" y2="258" />
+    </g>
+    <!-- 顶层粉白高光 -->
+    <g stroke="#ffe4e6" stroke-width="2">
+      <path d="M 225 195 L 195 220 L 225 245" />
+      <path d="M 275 195 L 305 220 L 275 245" />
+      <line x1="262" y1="182" x2="238" y2="258" />
+    </g>
+  </g>
+
+  <!-- 8. 束缚元素：猩红色绳结与悬吊线 -->
+  <g filter="url(#shadow)">
+    <!-- 穿过顶部铁环的环形悬吊绳 -->
+    <path d="M 244 67 C 244 46, 256 46, 256 67" fill="none" stroke="#e11d48" stroke-width="6" />
+    <!-- 垂直向下的悬吊承重绳 -->
+    <path d="M 244 67 L 244 142 M 256 67 L 256 142" stroke="#e11d48" stroke-width="6" />
+
+    <!-- 顶部绑缚防滑结 (Knot under ring) -->
+    <rect x="239" y="76" width="22" height="12" rx="3" fill="#be123c" />
+    <line x1="239" y1="82" x2="261" y2="82" stroke="#881337" stroke-width="2" />
+
+    <!-- O型环外围绑缚 - 顶部 (Top Wrap) -->
+    <rect x="238" y="142" width="24" height="26" rx="4" fill="#e11d48" />
+    <line x1="238" y1="150" x2="262" y2="150" stroke="#9f1239" stroke-width="2" />
+    <line x1="238" y1="160" x2="262" y2="160" stroke="#9f1239" stroke-width="2" />
+
+    <!-- O型环外围绑缚 - 底部 (Bottom Wrap) -->
+    <rect x="238" y="272" width="24" height="26" rx="4" fill="#e11d48" />
+    <line x1="238" y1="280" x2="262" y2="280" stroke="#9f1239" stroke-width="2" />
+    <line x1="238" y1="290" x2="262" y2="290" stroke="#9f1239" stroke-width="2" />
+
+    <!-- O型环外围绑缚 - 左侧 (Left Wrap) -->
+    <rect x="172" y="208" width="26" height="24" rx="4" fill="#e11d48" />
+    <line x1="180" y1="208" x2="180" y2="232" stroke="#9f1239" stroke-width="2" />
+    <line x1="190" y1="208" x2="190" y2="232" stroke="#9f1239" stroke-width="2" />
+
+    <!-- O型环外围绑缚 - 右侧 (Right Wrap) -->
+    <rect x="302" y="208" width="26" height="24" rx="4" fill="#e11d48" />
+    <line x1="310" y1="208" x2="310" y2="232" stroke="#9f1239" stroke-width="2" />
+    <line x1="320" y1="208" x2="320" y2="232" stroke="#9f1239" stroke-width="2" />
+  </g>
+
+  <!-- 9. 现代版式设计与排版 -->
+  <text x="250" y="370" font-family="'Inter', 'Helvetica Neue', 'Segoe UI', sans-serif" font-size="34" font-weight="900" fill="#f4f4f5" text-anchor="middle" letter-spacing="8">BONDAGE</text>
+
+  <!-- 将 STUDIO 包含在花括号内，进一步强化代码开发属性 -->
+  <text x="250" y="415" font-family="'Fira Code', 'Courier New', monospace" font-size="20" font-weight="bold" fill="#e11d48" text-anchor="middle" letter-spacing="4">{ STUDIO }</text>
+</svg>

@@ -63,8 +63,8 @@ void load_android_system_cas(ssl::context& ctx) {
     }
 
     int loaded = 0;
-    for (const char* dir : {"/apex/com.android.conscrypt/cacerts",
-                            "/system/etc/security/cacerts"}) {
+    for (const char* dir :
+         {"/apex/com.android.conscrypt/cacerts", "/system/etc/security/cacerts"}) {
         std::error_code ec;
         std::filesystem::directory_iterator it(dir, ec), end;
         if (ec) {
@@ -94,10 +94,11 @@ void load_android_system_cas(ssl::context& ctx) {
     ERR_clear_error();  // drop benign duplicate-cert errors
 
     if (loaded == 0) {
-        spdlog::warn("tls: no Android system CA certificates were loaded; "
-                     "upstream TLS verification will fail");
+        spdlog::warn(
+            "tls: no Android system CA certificates were loaded; "
+            "upstream TLS verification will fail");
     } else {
-        spdlog::debug("tls: loaded {} Android system CA certificate(s)", loaded);
+        spdlog::info("tls: loaded {} Android system CA certificate(s)", loaded);
     }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
+import { DiffEditor } from "../ui/code-editor";
 import { Window } from "../ui/window";
 import { getPendingUpdate } from "../../api";
 import { errorMessage } from "../../lib/utils";
@@ -52,36 +53,18 @@ export function PendingUpdateDialog({ script, onApply, onDismiss, onClose }: Pro
   return (
     <Window onClose={onClose} defaultWidth={760} defaultHeight={600} minWidth={520} minHeight={400}>
       <Window.Title>
-        Update {script.name}: v{script.version ?? "?"} → v{script.pendingUpdate?.version ?? "?"}
+        Update {script.name}: v{script.version ?? "?"} {"->"} v{script.pendingUpdate?.version ?? "?"}
       </Window.Title>
 
       <Window.Body className="overflow-hidden p-4">
         {loading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading update…</p>
         ) : (
-          <div className="grid h-full grid-cols-2 gap-3">
-            <div className="flex min-h-0 flex-col gap-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Current (v{script.version ?? "?"})
-              </p>
-              <textarea
-                readOnly
-                value={script.source}
-                spellCheck={false}
-                className="min-h-0 flex-1 resize-none rounded-md border border-input bg-muted/40 p-2 font-mono text-[11px] leading-relaxed"
-              />
-            </div>
-            <div className="flex min-h-0 flex-col gap-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                New (v{script.pendingUpdate?.version ?? "?"})
-              </p>
-              <textarea
-                readOnly
-                value={newSource}
-                spellCheck={false}
-                className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background p-2 font-mono text-[11px] leading-relaxed"
-              />
-            </div>
+          <div className="flex h-full min-h-0 flex-col gap-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Current (v{script.version ?? "?"}) {"->"} New (v{script.pendingUpdate?.version ?? "?"})
+            </p>
+            <DiffEditor original={script.source} modified={newSource} className="min-h-0 flex-1" />
           </div>
         )}
         {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
