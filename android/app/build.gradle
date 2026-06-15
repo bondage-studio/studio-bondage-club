@@ -8,7 +8,7 @@ def webDir = new File(repoRoot, 'web')
 
 android {
     namespace 'com.studio.bondageclub'
-    compileSdk 34
+    compileSdk 36
 
     // Pin the NDK so the vcpkg android triplets + C++20 build are reproducible.
     ndkVersion '30.0.14904198'
@@ -75,6 +75,9 @@ android {
             dimension 'engine'
             applicationIdSuffix '.gecko'
             versionNameSuffix '-gecko'
+            // GeckoView 151 requires minSdk 26 (Android 8.0). Raise it only for
+            // this flavor so the lighter `system` flavor keeps its wider reach.
+            minSdk 26
         }
     }
 
@@ -103,13 +106,7 @@ android {
 dependencies {
     // Bundled Firefox engine — only linked into the `gecko` flavor. The `system`
     // flavor uses android.webkit.WebView and pulls in nothing extra.
-    //
-    // Pinned to 133 (the last GeckoView on androidx.core 1.13.1): newer releases
-    // transitively require androidx.core >= 1.15 / media3, which force compileSdk
-    // 35+ and AGP 8.9+. Staying on 133 keeps the deliberately pinned toolchain
-    // (compileSdk 34, AGP 8.5.2, NDK) untouched while still shipping a modern
-    // engine. Bump together with compileSdk/AGP when those are raised.
-    geckoImplementation 'org.mozilla.geckoview:geckoview:133.0.20241209150345'
+    geckoImplementation 'org.mozilla.geckoview:geckoview:151.0.20260608154138'
 }
 
 // Build the web frontend (web/dist) before the native build embeds it into the
