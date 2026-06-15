@@ -12,26 +12,62 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Whether this engine supports streaming request bodies (a ReadableStream body
+// with duplex: "half"). Chromium does; Firefox/GeckoView do not — there,
+// forwarding request.body truncates the upload and breaks multipart boundary
+// parsing upstream ("No initial boundary string"). Detected once via the
+// standard duplex probe: a supporting engine reads the duplex getter and omits
+// the auto Content-Type for a stream body.
+const supportsRequestStreams: boolean = (() => {
+  let duplexAccessed = false;
+  try {
+    const hasContentType = new Request("https://example.com", {
+      method: "POST",
+      body: new ReadableStream(),
+      get duplex() {
+        duplexAccessed = true;
+        return "half";
+      },
+    } as RequestInit).headers.has("Content-Type");
+    return duplexAccessed && !hasContentType;
+  } catch {
+    return false;
+  }
+})();
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const loaderURL = toRemoteLoaderURL(request.url);
   if (!loaderURL) {
     return;
   }
-  const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  event.respondWith(
-    fetch(loaderURL, {
-      method: request.method,
-      cache: request.cache === "only-if-cached" ? "default" : request.cache,
-      credentials: "same-origin",
-      headers: new Headers(request.headers),
-      body: hasBody ? request.body : undefined,
-      redirect: "follow",
-      // duplex is required by the spec when body is a ReadableStream
-      ...(hasBody && request.body ? { duplex: "half" } : {}),
-    } as RequestInit),
-  );
+  event.respondWith(forwardToLoader(request, loaderURL));
 });
+
+async function forwardToLoader(request: Request, loaderURL: string): Promise<Response> {
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const init: RequestInit = {
+    method: request.method,
+    cache: request.cache === "only-if-cached" ? "default" : request.cache,
+    credentials: "same-origin",
+    headers: new Headers(request.headers),
+    redirect: "follow",
+  };
+  if (hasBody) {
+    if (supportsRequestStreams && request.body) {
+      // Stream the body through (no extra buffering) where supported.
+      init.body = request.body;
+      (init as RequestInit & { duplex: "half" }).duplex = "half";
+    } else {
+      // Fallback: buffer the body so engines without streaming-upload support
+      // send the complete payload. The original Content-Type (incl. the
+      // multipart boundary) is preserved via the copied headers, and the
+      // browser recomputes Content-Length from the buffered body.
+      init.body = await request.arrayBuffer();
+    }
+  }
+  return fetch(loaderURL, init);
+}
 
 // Returns a local proxy URL for cross-origin requests, or null to pass through.
 //
