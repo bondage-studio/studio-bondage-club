@@ -322,3 +322,53 @@ jobs:
           name: studio-bondage-club-android-gecko-arm64
           path: android/app/build/outputs/apk/gecko/release/*.apk
           if-no-files-found: error
+
+  release-nightly:
+    name: Publish nightly release
+    needs: [build, build-linux-musl, android]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage versioned assets
+        run: |
+          set -euo pipefail
+          ver="$(date -u +%Y%m%d)-$(echo '${{ github.sha }}' | cut -c1-7)"
+          mkdir -p dist
+          shopt -s nullglob
+          for d in artifacts/*/; do
+            slug="$(basename "$d")"
+            [ "$slug" = "web-dist" ] && continue
+            for f in "$d"*; do
+              [ -f "$f" ] || continue
+              case "$(basename "$f")" in
+                *.exe) ext=".exe" ;;
+                *.apk) ext=".apk" ;;
+                *)     ext="" ;;
+              esac
+              cp "$f" "dist/${slug}-${ver}${ext}"
+            done
+          done
+          echo "Assets to publish:"
+          ls -lh dist
+
+      - name: Publish to rolling nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ver="$(date -u +%Y-%m-%d) (${GITHUB_SHA})"
+          # Drop the old nightly release + tag so only the latest assets remain.
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly dist/* \
+            --prerelease \
+            --title "Nightly build" \
+            --notes "Rolling build of \`main\` — ${ver}. Assets are versioned by build date + commit hash." \
+            --target "${GITHUB_SHA}"
