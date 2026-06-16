@@ -131,6 +131,23 @@ cmake --build build/default
 See `config.example.json` for a complete configuration with named stores and
 cache rules.
 
+## Desktop client (Linux, CEF)
+
+For a native windowed app (instead of running the CLI and opening a browser),
+build the CEF desktop client under `desktop/`. CEF is auto-downloaded at
+configure time:
+
+```sh
+cd web && npm install && npm run build && cd ..   # the server serves web/dist
+cmake --preset linux-desktop
+cmake --build build/linux-desktop
+./build/linux-desktop/desktop/studio-bondage-club-desktop
+```
+
+It bundles the embedded server and a Chromium window into one executable and
+behaves as a native host (cross-origin interception + an injected RPC bridge),
+mirroring the Android app. See **[desktop/README.md](desktop/README.md)**.
+
 ## Cross-platform
 
 Desktop (Linux/macOS/Windows) is the primary target. Platform-specific code is

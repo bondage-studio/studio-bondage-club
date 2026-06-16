@@ -72,6 +72,27 @@ jobs:
         with:
           arch: ${{ matrix.msvc_arch }}
 
+      # The server embeds web/dist (SBC_EMBED_WEB, enabled at configure below) so
+      # the binary is self-contained. Build the panel first; EmbedWebAssets reads
+      # it at build time and runs a python3 generator to emit the asset TU, so a
+      # Python interpreter must be available on every platform in the matrix.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build web panel
+        shell: bash
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
       # Bootstrap vcpkg into ./.vcpkg at the manifest baseline, matching the
       # CMakePresets toolchain path. Manifest mode installs deps at configure time.
       - name: Bootstrap vcpkg
@@ -95,7 +116,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             extra+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
           fi
-          cmake --preset ${{ matrix.preset }} "${extra[@]}"
+          cmake --preset ${{ matrix.preset }} -DSBC_EMBED_WEB=ON "${extra[@]}"
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }}
@@ -166,7 +187,7 @@ jobs:
         shell: sh
         run: |
           apk add --no-cache \
-            build-base cmake samurai git bash perl linux-headers \
+            build-base cmake samurai git bash perl linux-headers python3 \
             curl zip unzip tar pkgconf upx file nodejs npm gcompat libstdc++
           git config --global --add safe.directory '*'
 
@@ -179,6 +200,15 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      # Build the panel embedded into the (self-contained) musl binary. Uses the
+      # container's apk nodejs/npm + python3 (not setup-node, which ships glibc).
+      - name: Build web panel
+        shell: bash
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -189,7 +219,7 @@ jobs:
 
       - name: Configure
         shell: bash
-        run: cmake --preset musl-static
+        run: cmake --preset musl-static -DSBC_EMBED_WEB=ON
 
       - name: Build
         shell: bash
@@ -213,6 +243,99 @@ jobs:
         with:
           name: studio-bondage-club-${{ matrix.slug }}
           path: build/musl-static/studio-bondage-club
+          if-no-files-found: error
+
+  build-desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux desktop x64",   os: ubuntu-latest,    slug: linux-x64 }
+          - { name: "Linux desktop arm64", os: ubuntu-24.04-arm, slug: linux-arm64 }
+
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+      # Pinned CEF build (platform slug is appended per-arch by DownloadCEF.cmake).
+      CEF_VERSION: "144.0.28+ga64d412+chromium-144.0.7559.255"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      # ninja generator, system OpenSSL for sbc_core, libx11-dev for the lone
+      # entry in CEF_STANDARD_LIBS the client links against.
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libssl-dev libx11-dev
+
+      # The server embeds web/dist (SBC_EMBED_WEB), so it must exist before the
+      # C++ build runs. Build it here, like the Android job does.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web panel
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg .vcpkg
+          baseline=$(node -p "require('./vcpkg.json')['builtin-baseline']")
+          git -C .vcpkg checkout "$baseline"
+          ./.vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure
+        run: cmake --preset linux-desktop -DCEF_VERSION="$CEF_VERSION"
+
+      - name: Build
+        run: cmake --build build/linux-desktop
+
+      - name: Verify staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/linux-desktop/desktop
+          for f in studio-bondage-club-desktop libcef.so icudtl.dat resources.pak v8_context_snapshot.bin; do
+            test -f "$f" || { echo "missing staged runtime file: $f"; exit 1; }
+          done
+          test -d locales || { echo "missing locales/"; exit 1; }
+          ldd studio-bondage-club-desktop || true
+          echo "Staging OK"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=build/linux-desktop/desktop
+          out="$RUNNER_TEMP/sbc-desktop"
+          mkdir -p "$out/locales"
+          cp "$src/studio-bondage-club-desktop" "$out/"
+          cp "$src"/*.so "$src"/*.so.* "$src/chrome-sandbox" "$out/"
+          cp "$src"/*.pak "$src/icudtl.dat" "$src"/*.bin "$src"/vk_swiftshader_icd.json "$out/"
+          cp "$src"/locales/* "$out/locales/"
+          # --strip-unneeded keeps exported (dynamically linked) symbols intact.
+          strip --strip-unneeded "$out"/*.so "$out"/*.so.* 2>/dev/null || true
+          tar -czf "$RUNNER_TEMP/studio-bondage-club-desktop-${{ matrix.slug }}.tar.gz" -C "$out" .
+          ls -lh "$RUNNER_TEMP/studio-bondage-club-desktop-${{ matrix.slug }}.tar.gz"
+
+      - name: Upload desktop client
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-bondage-club-desktop-${{ matrix.slug }}
+          path: ${{ runner.temp }}/studio-bondage-club-desktop-${{ matrix.slug }}.tar.gz
           if-no-files-found: error
 
   # React admin panel: type-check + production build.
@@ -325,7 +448,7 @@ jobs:
 
   release-nightly:
     name: Publish nightly release
-    needs: [build, build-linux-musl, android]
+    needs: [build, build-linux-musl, build-desktop, android]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -348,9 +471,10 @@ jobs:
             for f in "$d"*; do
               [ -f "$f" ] || continue
               case "$(basename "$f")" in
-                *.exe) ext=".exe" ;;
-                *.apk) ext=".apk" ;;
-                *)     ext="" ;;
+                *.exe)    ext=".exe" ;;
+                *.apk)    ext=".apk" ;;
+                *.tar.gz) ext=".tar.gz" ;;
+                *)        ext="" ;;
               esac
               cp "$f" "dist/${slug}-${ver}${ext}"
             done

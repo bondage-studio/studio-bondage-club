@@ -104,7 +104,7 @@ void EmbeddedServer::stop() {
     spdlog::info("studio bondage club local host stopped");
 }
 
-#if defined(__ANDROID__)
+#if defined(SBC_NATIVE_RPC)
 
 namespace asio = boost::asio;
 
@@ -156,6 +156,6 @@ void EmbeddedServer::reset_rpc() {
     }
 }
 
-#endif  // __ANDROID__
+#endif  // SBC_NATIVE_RPC
 
 }  // namespace sbc::server

@@ -203,6 +203,7 @@ lists `libstdc++`, `libssl`/`libcrypto`, `VCRUNTIME140.dll`, etc.
 | `SBC_STATIC_RUNTIME` | `OFF` | Statically link the C/C++ runtime (libstdc++/libgcc, or the MSVC CRT via `/MT`). No-op on macOS. |
 | `SBC_EMBED_WEB` | `OFF` | Compile `web/dist/` into the executable so it needs no `web/dist` directory at runtime. |
 | `SBC_BUILD_TESTS` | `ON` | Build the `sbc_tests` target and register it with CTest. |
+| `SBC_BUILD_CEF_CLIENT` | `OFF` | Build the Linux CEF desktop client (`desktop/`). Auto-downloads CEF; Linux-only. See below. |
 | `CMAKE_INTERPROCEDURAL_OPTIMIZATION` | `OFF` | Enable link-time optimisation (LTO) for smaller/faster Release builds. |
 | `VCPKG_TARGET_TRIPLET` | host default | Selects the dependency linkage (see the triplet table above). |
 
@@ -223,6 +224,32 @@ cmake --build build/static
 | `static-windows` | `x64-windows-static` | **static** | Windows-only (host-gated); fully static deps + CRT |
 | `dynamic` | host default | dynamic | Explicit shared runtime |
 | `dynamic-windows` | `x64-windows` | dynamic | Windows-only; shared deps + shared CRT |
+| `linux-desktop` | host default | dynamic | Linux-only; builds the CEF desktop client (`SBC_BUILD_CEF_CLIENT=ON`) |
 | `system` | none (Homebrew) | dynamic | macOS, no vcpkg |
 
 Run any of them with `cmake --preset <name>` then `cmake --build build/<name>`.
+
+## Desktop client (Linux, CEF)
+
+The `desktop/` module builds `studio-bondage-club-desktop`: a native Linux app
+that bundles the embedded server and a Chromium window (via the Chromium Embedded
+Framework) into one executable, so the game launches like an app. It is a
+*native host* like the Android app — it intercepts cross-origin requests through
+the local loader and drives RPC over an injected `window.__sbcNativeRpc` bridge
+(see `desktop/README.md`).
+
+CEF is **auto-downloaded** at configure time (the minimal linux64/linuxarm64
+distribution, SHA1-verified, cached under `desktop/third_party/cef/`):
+
+```sh
+cd web && npm install && npm run build && cd ..   # the server serves web/dist
+cmake --preset linux-desktop                       # downloads CEF on first configure
+cmake --build build/linux-desktop
+./build/linux-desktop/desktop/studio-bondage-club-desktop
+```
+
+- `-DCEF_VERSION=<build>` pins a CEF build instead of resolving the latest stable.
+- `-DCEF_ROOT=<dir>` consumes a pre-extracted CEF SDK and skips the download.
+
+`libcef.so` and the CEF resources are staged next to the binary, found at runtime
+via an `$ORIGIN` rpath.

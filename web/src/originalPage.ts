@@ -1,4 +1,4 @@
-import { isAndroidRuntime } from "@/lib/platform";
+import { isNativeRuntime } from "@/lib/platform";
 import { installOptimizationHost } from "@/optimizations/host";
 import { rpcClient } from "@/rpc/client";
 import { setRpcToken } from "@/rpc/token";
@@ -93,12 +93,12 @@ async function fetchHomepageSource(): Promise<HomepageSourceResponse> {
 }
 
 async function registerServiceWorker(bootstrap: StudioBootstrap) {
-  // The Android WebView host (MainActivity) intercepts cross-origin requests
-  // natively via shouldInterceptRequest and tags its user agent, so the service
-  // worker is redundant there. Returning false routes through the same
-  // parse-time URL-rewriting fallback used when service workers are unavailable.
-  if (isAndroidRuntime()) {
-    setStatus(bootstrap, "loading", "Native WebView interception active; service worker disabled.");
+  // A native host (the Android WebView, the desktop CEF window) intercepts
+  // cross-origin requests itself and tags its user agent, so the service worker
+  // is redundant there. Returning false routes through the same parse-time
+  // URL-rewriting fallback used when service workers are unavailable.
+  if (isNativeRuntime()) {
+    setStatus(bootstrap, "loading", "Native host interception active; service worker disabled.");
     return false;
   }
   if (!("serviceWorker" in navigator)) {

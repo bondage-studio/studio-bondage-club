@@ -42,9 +42,11 @@ public:
 
 #if defined(__ANDROID__)
     bool hardware_acceleration() const { return hardware_acceleration_; }
+#endif
 
-    // --- Native RPC bridge (Android) ---
-    // The WebView host drives the same RPC dispatcher the /rpc WebSocket uses,
+#if defined(SBC_NATIVE_RPC)
+    // --- Native RPC bridge (native hosts: Android WebView, desktop CEF) ---
+    // The native host drives the same RPC dispatcher the /rpc WebSocket uses,
     // skipping the localhost socket hop. The bridge object injected into the page
     // is globally visible to all page JS, so deliver_rpc_frame verifies the
     // capability token on every inbound frame (the stateless equivalent of the WS

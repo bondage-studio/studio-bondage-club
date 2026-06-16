@@ -6,6 +6,14 @@ cmake_minimum_required(VERSION 3.21)
 # SBC_STATIC_RUNTIME option below works regardless of policy defaults.
 cmake_policy(SET CMP0091 NEW)
 
+# CMP0167 (CMake 3.30+): the built-in FindBoost module is removed in favor of
+# the BoostConfig.cmake config package that Boost itself ships (>= 1.70). Opt in
+# so find_package(Boost) uses Boost's own config package. Guarded because the
+# policy does not exist on older CMake, where setting an unknown policy errors.
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 project(studio-bondage-club CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -23,6 +31,8 @@ endif()
 
 option(SBC_EMBED_WEB     "Embed web/dist into the binary instead of reading from disk" OFF)
 option(SBC_BUILD_TESTS   "Build unit tests" ON)
+
+option(SBC_BUILD_CEF_CLIENT "Build the Linux CEF desktop client (desktop/)" OFF)
 
 # Runtime (C/C++ standard library) linkage. This is independent of how the vcpkg
 # dependencies are linked — that is governed by the vcpkg triplet (see docs/BUILD.md).
@@ -108,6 +118,13 @@ endif()
 target_compile_definitions(sbc_core PUBLIC
   BOOST_ASIO_NO_DEPRECATED
   BOOST_BEAST_USE_STD_STRING_VIEW)
+
+# Native RPC bridge: the in-process channel that lets a native host (the Android
+# WebView, the desktop CEF window) drive the RPC dispatcher directly, bypassing
+# the localhost WebSocket. Compiled into sbc_core for those hosts only.
+if(ANDROID OR SBC_BUILD_CEF_CLIENT)
+  target_compile_definitions(sbc_core PUBLIC SBC_NATIVE_RPC)
+endif()
 
 if(WIN32)
   target_compile_definitions(sbc_core PUBLIC _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -202,4 +219,11 @@ if(SBC_BUILD_TESTS AND NOT ANDROID AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests
     sbc_apply_static_runtime(sbc_tests)
     add_test(NAME sbc_tests COMMAND sbc_tests)
   endif()
+endif()
+
+if(SBC_BUILD_CEF_CLIENT)
+  if(NOT (UNIX AND NOT APPLE AND NOT ANDROID))
+    message(FATAL_ERROR "SBC_BUILD_CEF_CLIENT is currently supported on Linux only")
+  endif()
+  add_subdirectory(desktop)
 endif()

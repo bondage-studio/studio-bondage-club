@@ -66,6 +66,17 @@
     },
 
     {
+      "name": "linux-desktop",
+      "inherits": "default",
+      "displayName": "Linux desktop client (CEF native host; auto-downloads CEF)",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "SBC_BUILD_CEF_CLIENT": "ON",
+        "SBC_EMBED_WEB": "ON"
+      }
+    },
+
+    {
       "name": "system",
       "displayName": "System libs — Homebrew dylibs, no vcpkg (macOS)",
       "generator": "Ninja",
@@ -86,6 +97,7 @@
     { "name": "musl-static", "configurePreset": "musl-static" },
     { "name": "dynamic", "configurePreset": "dynamic" },
     { "name": "dynamic-windows", "configurePreset": "dynamic-windows" },
+    { "name": "linux-desktop", "configurePreset": "linux-desktop" },
     { "name": "system", "configurePreset": "system" }
   ],
   "testPresets": [

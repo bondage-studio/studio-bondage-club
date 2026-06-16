@@ -13,6 +13,9 @@ web/vite.config.d.ts
 build/
 .vcpkg/
 vcpkg_installed/
+
+# CEF binary distribution (auto-downloaded by desktop/cmake/DownloadCEF.cmake)
+desktop/third_party/
 *.o
 *.obj
 compile_commands.json
