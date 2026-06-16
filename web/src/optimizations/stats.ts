@@ -1,18 +1,13 @@
-// Snapshot of the live optimization stats, computed from the tickRecorder ring
-// buffer and the lazyCanvas per-character state. Pure read-only aggregation —
-// the OptimizationsTab polls collectPerfStats() once a second to drive its charts
-// (this replaced the old window.tps() console dump).
+import { getFrameSamples } from "./features/frameRecorder";
+import { getTrackedCharacters } from "./features/renderTracker";
 
-import { getCharacterStates } from "./features/lazyCanvas";
-import { getTickRecords } from "./features/tickRecorder";
-
-/** Aggregate tick timings over a trailing window (e.g. last 5s). */
+/** Aggregate frame timings over a trailing window (e.g. last 5s). */
 export interface PerfWindow {
   label: string;
   seconds: number;
-  /** Ticks per second across the window. */
-  tps: number;
-  /** Mean / 90th-percentile / max milliseconds-per-tick. */
+  /** Frames per second across the window. */
+  fps: number;
+  /** Mean / 90th-percentile / max milliseconds-per-frame. */
   avg: number;
   p90: number;
   max: number;
@@ -23,8 +18,8 @@ export interface PerfWindow {
 export interface PerfSample {
   /** Whole seconds before "now" (0 = the current second, 59 = oldest). */
   agoSec: number;
-  tps: number;
-  mspt: number;
+  fps: number;
+  frameMs: number;
 }
 
 /** Draw vs. skip accounting for a single tracked character. */
@@ -37,6 +32,7 @@ export interface CharStat {
   skipTimes: number;
   /** Fraction of build calls skipped, 0–1 (the lazyCanvas payoff). */
   skipRatio: number;
+  /** Mean ms to rebuild this character's canvas once — its intrinsic render cost. */
   avgDraw: number;
   lastSeenSec: number;
 }
@@ -58,10 +54,9 @@ const WINDOWS: { label: string; seconds: number }[] = [
 
 const SERIES_SECONDS = 60;
 
-function describeCharacter(C: Character | undefined, charId: string): string {
-  if (!C) return charId;
+function describeCharacter(C: Character): string {
   const username = C.Name?.trim() || "?";
-  const id = C.MemberNumber ?? charId;
+  const id = C.MemberNumber ?? C.CharacterID;
   const nickname = C.Nickname?.trim();
   return nickname ? `${nickname} (${username}) ${id}` : `(${username}) ${id}`;
 }
@@ -75,11 +70,11 @@ function percentile(sorted: number[], q: number): number {
 
 export function collectPerfStats(): PerfStats {
   const now = Date.now();
-  const ticks = getTickRecords();
+  const frames = getFrameSamples();
 
   const windows: PerfWindow[] = WINDOWS.map(({ label, seconds }) => {
     const cutoff = now - seconds * 1000;
-    const durations = ticks
+    const durations = frames
       .filter((r) => r.time >= cutoff)
       .map((r) => r.duration)
       .sort((a, b) => a - b);
@@ -89,18 +84,18 @@ export function collectPerfStats(): PerfStats {
       label,
       seconds,
       count,
-      tps: count / seconds,
+      fps: count / seconds,
       avg: count ? sum / count : 0,
       p90: percentile(durations, 0.9),
       max: count ? durations[count - 1] : 0,
     };
   });
 
-  // Bucket the trailing minute into per-second slots: tps = ticks in the second,
-  // mspt = their mean duration.
+  // Bucket the trailing minute into per-second slots: fps = frames in the second,
+  // frameMs = their mean duration.
   const counts = new Array<number>(SERIES_SECONDS).fill(0);
   const sums = new Array<number>(SERIES_SECONDS).fill(0);
-  for (const r of ticks) {
+  for (const r of frames) {
     const ago = Math.floor((now - r.time) / 1000);
     if (ago >= 0 && ago < SERIES_SECONDS) {
       counts[ago]++;
@@ -111,33 +106,31 @@ export function collectPerfStats(): PerfStats {
   for (let ago = SERIES_SECONDS - 1; ago >= 0; ago--) {
     series.push({
       agoSec: ago,
-      tps: counts[ago],
-      mspt: counts[ago] ? sums[ago] / counts[ago] : 0,
+      fps: counts[ago],
+      frameMs: counts[ago] ? sums[ago] / counts[ago] : 0,
     });
   }
 
-  const states = getCharacterStates();
-  const roster = typeof Character !== "undefined" ? Character : [];
   const characters: CharStat[] = [];
-  for (const [id, info] of states) {
-    const total = info.drawTimes + info.skipTimes;
-    const charObj = roster.find((c) => c.CharacterID === id);
+  for (const { C, stat } of getTrackedCharacters()) {
+    const total = stat.rebuilds + stat.skips;
     characters.push({
-      id,
-      label: describeCharacter(charObj, id),
-      drawTimes: info.drawTimes,
-      skipTimes: info.skipTimes,
-      skipRatio: total ? info.skipTimes / total : 0,
-      avgDraw: info.drawPerformanceAvg,
-      lastSeenSec: Math.round((now - info.lastSeen) / 1000),
+      id: C.CharacterID,
+      label: describeCharacter(C),
+      drawTimes: stat.rebuilds,
+      skipTimes: stat.skips,
+      skipRatio: total ? stat.skips / total : 0,
+      avgDraw: stat.rebuilds ? stat.totalMs / stat.rebuilds : 0,
+      lastSeenSec: stat.lastRebuildAt ? Math.round((now - stat.lastRebuildAt) / 1000) : 0,
     });
   }
-  characters.sort((a, b) => b.drawTimes + b.skipTimes - (a.drawTimes + a.skipTimes));
+  // Heaviest renderers first — by per-rebuild cost (the intrinsic render weight).
+  characters.sort((a, b) => b.avgDraw - a.avgDraw);
 
   return {
     windows,
     series,
     characters,
-    hasData: ticks.length > 0 || characters.length > 0,
+    hasData: frames.length > 0 || characters.length > 0,
   };
 }

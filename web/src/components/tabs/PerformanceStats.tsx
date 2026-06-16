@@ -1,8 +1,3 @@
-// Live optimization stats for the Optimizations tab. Polls collectPerfStats()
-// once a second (the loader runs in the same module graph / shadow DOM, so the
-// state is read directly — no RPC) and renders it as recharts time-series plus
-// per-character skip-ratio bars. Replaces the old window.tps() console dump.
-
 import { useEffect, useState } from "react";
 import {
   Area,
@@ -14,7 +9,8 @@ import {
   YAxis,
 } from "recharts";
 import { Panel } from "@/components/shared/Panel";
-import { collectPerfStats, type PerfStats } from "@/optimizations/stats";
+import { collectPerfStats, type CharStat, type PerfStats } from "@/optimizations/stats";
+import { getOptimizationStatus, type OptimizationStatus } from "@/optimizations/state";
 
 // Literal colors are shadow-DOM-safe; the teal matches --primary so the charts
 // read as part of the panel.
@@ -32,23 +28,143 @@ const TOOLTIP_STYLE = {
   padding: "4px 8px",
 } as const;
 
+const TRIGGER_LABEL: Record<string, string> = {
+  default: "always on",
+  idle: "idle trigger",
+  background: "tab in background",
+};
+
 function fmt(n: number, digits = 1): string {
   return n.toFixed(digits);
 }
 
 export function PerformanceStats() {
   const [stats, setStats] = useState<PerfStats | null>(null);
+  const [status, setStatus] = useState<OptimizationStatus | null>(null);
 
   useEffect(() => {
-    const tick = () => setStats(collectPerfStats());
+    const tick = () => {
+      setStats(collectPerfStats());
+      setStatus(getOptimizationStatus());
+    };
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, []);
 
   return (
+    <div className="grid gap-3">
+      <StatusBanner status={status} />
+      <CharacterCost stats={stats} />
+      <FrameTiming stats={stats} />
+    </div>
+  );
+}
+
+function StatusBanner({ status }: { status: OptimizationStatus | null }) {
+  let dot = "bg-muted-foreground/50";
+  let text = (
+    <span className="text-muted-foreground">Loading optimizer status…</span>
+  );
+  if (status) {
+    if (!status.enabled) {
+      dot = "bg-muted-foreground/50";
+      text = (
+        <span className="text-muted-foreground">
+          Optimizations are <span className="font-medium text-foreground">off</span> — every hook
+          passes through untouched.
+        </span>
+      );
+    } else if (status.activeProfileId) {
+      dot = "animate-pulse bg-primary";
+      text = (
+        <span>
+          Optimizing with{" "}
+          <span className="font-semibold text-foreground">{status.activeProfileName}</span>
+          <span className="ml-1 text-muted-foreground">
+            ({TRIGGER_LABEL[status.activeTrigger ?? "default"]})
+          </span>
+        </span>
+      );
+    } else {
+      dot = "bg-amber-500";
+      text = (
+        <span className="text-amber-700">
+          Enabled, but no rule matches right now — nothing is applied.
+        </span>
+      );
+    }
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      {text}
+    </div>
+  );
+}
+
+function CharacterCost({ stats }: { stats: PerfStats | null }) {
+  const chars = stats?.characters ?? [];
+  return (
     <Panel
-      title="Live stats"
+      title="Render cost by character"
+      action={
+        chars.length > 0 ? (
+          <span className="text-[11px] tabular-nums text-muted-foreground">
+            ms per rebuild · {chars.length}
+          </span>
+        ) : undefined
+      }
+    >
+      {chars.length === 0 ? (
+        <p className="py-4 text-center text-xs text-muted-foreground">
+          No characters drawn yet — the heaviest renderers show up here as characters render.
+          Enable <span className="font-medium">Lazy canvas</span> to also see skipped rebuilds.
+        </p>
+      ) : (
+        <div className="grid gap-2.5">
+          {chars.map((c, i) => (
+            <CharacterRow key={c.id} c={c} max={chars[0].avgDraw} rank={i + 1} />
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function CharacterRow({ c, max, rank }: { c: CharStat; max: number; rank: number }) {
+  const width = max > 0 ? Math.max(2, (c.avgDraw / max) * 100) : 0;
+  const skipPct = Math.round(c.skipRatio * 100);
+  return (
+    <div className="text-xs">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="min-w-0 truncate">
+          <span className="mr-1 tabular-nums text-muted-foreground">{rank}.</span>
+          {c.label}
+        </span>
+        <span className="shrink-0 font-semibold tabular-nums text-primary">
+          {fmt(c.avgDraw)} ms
+        </span>
+      </div>
+      <div className="my-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-x-2 text-[11px] tabular-nums text-muted-foreground">
+        <span>{c.drawTimes} rebuilds</span>
+        <span>· {skipPct}% skipped</span>
+        <span className="ml-auto">{c.lastSeenSec}s ago</span>
+      </div>
+    </div>
+  );
+}
+
+function FrameTiming({ stats }: { stats: PerfStats | null }) {
+  const hasFrames = !!stats && stats.windows.some((w) => w.count > 0);
+  const w5 = stats?.windows[1];
+  const w30 = stats?.windows[2];
+  return (
+    <Panel
+      title="Frame timing"
       action={
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
@@ -56,76 +172,34 @@ export function PerformanceStats() {
         </span>
       }
     >
-      {!stats?.hasData ? (
-        <p className="py-6 text-center text-xs text-muted-foreground">
-          No data yet. Enter a chat room to record tick timings. Enable{" "}
-          <span className="font-medium">Lazy canvas</span> in an active profile for per-character
-          skip stats.
+      {!hasFrames ? (
+        <p className="py-4 text-center text-xs text-muted-foreground">
+          No frames recorded yet — waiting for the game to start rendering.
         </p>
       ) : (
-        <div className="grid gap-4">
-          <WindowSummary stats={stats} />
-          <div className="grid gap-4 @lg:grid-cols-2">
-            <TrendChart
-              title="Ticks / sec"
-              data={stats.series}
-              dataKey="tps"
-              color={TPS_COLOR}
-              unit=""
-            />
-            <TrendChart
-              title="ms / tick"
-              data={stats.series}
-              dataKey="mspt"
-              color={MSPT_COLOR}
-              unit="ms"
-            />
+        <div className="grid gap-3">
+          <div className="grid grid-cols-3 gap-2">
+            <StatTile label="FPS" value={fmt(w5?.fps ?? 0, 1)} />
+            <StatTile label="ms / frame" value={fmt(w5?.avg ?? 0)} accent={MSPT_COLOR} />
+            <StatTile label="Peak ms · 30s" value={fmt(w30?.max ?? 0)} accent={MSPT_COLOR} />
           </div>
-          <CharacterBars stats={stats} />
+          <div className="grid gap-3 @lg:grid-cols-2">
+            <TrendChart title="FPS" data={stats!.series} dataKey="fps" color={TPS_COLOR} unit="" />
+            <TrendChart title="ms / frame" data={stats!.series} dataKey="frameMs" color={MSPT_COLOR} unit="ms" />
+          </div>
         </div>
       )}
     </Panel>
   );
 }
 
-function WindowSummary({ stats }: { stats: PerfStats }) {
+function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div>
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        Tick rate &amp; cost per window
+    <div className="rounded-md border bg-background px-2.5 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold tabular-nums" style={accent ? { color: accent } : undefined}>
+        {value}
       </div>
-      <table className="w-full text-xs tabular-nums">
-        <thead>
-          <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            <th className="py-1 text-left font-medium">window</th>
-            <th className="py-1 text-right font-medium">tps</th>
-            <th className="py-1 text-right font-medium">avg</th>
-            <th className="py-1 text-right font-medium">p90</th>
-            <th className="py-1 text-right font-medium">max</th>
-            <th className="w-6 py-1 text-right font-normal normal-case">ms</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.windows.map((w) => (
-            <tr key={w.label} className="border-t border-border/60">
-              <td className="py-1 text-left text-muted-foreground">{w.label}</td>
-              <td className="py-1 text-right font-medium">{fmt(w.tps, 1)}</td>
-              {w.count > 0 ? (
-                <>
-                  <td className="py-1 text-right">{fmt(w.avg)}</td>
-                  <td className="py-1 text-right">{fmt(w.p90)}</td>
-                  <td className="py-1 text-right">{fmt(w.max)}</td>
-                  <td />
-                </>
-              ) : (
-                <td className="py-1 text-right text-muted-foreground" colSpan={4}>
-                  no ticks
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -139,7 +213,7 @@ function TrendChart({
 }: {
   title: string;
   data: PerfStats["series"];
-  dataKey: "tps" | "mspt";
+  dataKey: "fps" | "frameMs";
   color: string;
   unit: string;
 }) {
@@ -191,40 +265,6 @@ function TrendChart({
             />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-function CharacterBars({ stats }: { stats: PerfStats }) {
-  if (stats.characters.length === 0) {
-    return (
-      <p className="text-[11px] text-muted-foreground">
-        No characters tracked yet (enable Lazy canvas and enter a chat room).
-      </p>
-    );
-  }
-  return (
-    <div>
-      <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        Canvas rebuilds skipped (per character)
-      </div>
-      <div className="grid gap-1.5">
-        {stats.characters.map((c) => {
-          const total = c.drawTimes + c.skipTimes;
-          const pct = Math.round(c.skipRatio * 100);
-          return (
-            <div key={c.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="truncate">
-                {c.label}
-                <span className="ml-1.5 text-[11px] tabular-nums text-muted-foreground">
-                  {c.skipTimes}/{total} skipped · {fmt(c.avgDraw)}ms draw · {c.lastSeenSec}s ago
-                </span>
-              </span>
-              <span className="shrink-0 font-semibold tabular-nums text-primary">{pct}%</span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

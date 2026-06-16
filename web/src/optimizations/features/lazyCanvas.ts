@@ -1,28 +1,20 @@
-// lazyCanvas — the core optimization: skip redundant character canvas rebuilds.
-// Outside the chat-room draw loop a rebuild is deferred (marked dirty) and flushed
-// by DrawCharacter; inside it, a character is rebuilt only when new, on a 5s
-// heartbeat, or when its appearance hash changes.
-
 import { dbg } from "../debug";
 import { flags } from "../flags";
 import type { Optimization } from "../optimization";
+import { flagSkip, getRenderStat } from "./renderTracker";
 
-export interface CharState {
+interface LazyState {
   createdAt: number;
-  lastSeen: number;
-  drawPerformanceSum: number;
-  drawPerformanceAvg: number;
-  drawTimes: number;
-  skipTimes: number;
   nextStaleDraw: number;
   nextForceDraw: number;
   lastHash: number | null;
-  isDirty?: boolean;
-  dirtyAt?: number;
+  isDirty: boolean;
+  dirtyAt: number;
 }
 
-// Keyed by Character.CharacterID, which is a string (e.g. "Online-12345").
-const characterStates = new Map<string, CharState>();
+// Keyed by the Character object: entries are GC'd with the character, so no
+// manual eviction and no risk of a stale string-id key.
+const lazyStates = new WeakMap<Character, LazyState>();
 // True while a chat-room character pass is running, so the build hook can tell an
 // in-loop redraw from an out-of-loop deferred one.
 let isDrawing = false;
@@ -34,10 +26,6 @@ let forceBuildCanvas = false;
 let loggedBuild = false;
 
 const FORCE_DRAW_MS = 5000;
-
-export function getCharacterStates(): ReadonlyMap<string, CharState> {
-  return characterStates;
-}
 
 // Cheap 16-bit rolling hash over item descriptions: a fast staleness signal.
 function sodiumHash(updater: string | null | undefined, pointer: { value: number }): void {
@@ -52,16 +40,6 @@ function sodiumHash(updater: string | null | undefined, pointer: { value: number
     h = h * 31 + (updater.charCodeAt(len - 1) || 0);
   }
   pointer.value = h & 0xffff;
-}
-
-// Repaint and forget every tracked character; called when lazyCanvas turns off so
-// canvases skipped while it was active refresh back to the live look.
-function refreshTrackedCharacters(): void {
-  for (const id of characterStates.keys()) {
-    const C = Character.find((c) => c.CharacterID === id);
-    if (C) CharacterRefresh(C, false);
-  }
-  characterStates.clear();
 }
 
 export const lazyCanvas: Optimization = {
@@ -92,20 +70,17 @@ export const lazyCanvas: Optimization = {
       if (CurrentScreen !== "ChatRoom" || CurrentCharacter) return next(args);
 
       const now = Date.now();
-      let state = characterStates.get(C.CharacterID);
+      let state = lazyStates.get(C);
       if (!state) {
         state = {
           createdAt: now,
-          lastSeen: now,
-          drawPerformanceSum: 0,
-          drawPerformanceAvg: 0,
-          drawTimes: 0,
-          skipTimes: 0,
           nextStaleDraw: 0,
           nextForceDraw: 0,
           lastHash: null,
+          isDirty: false,
+          dirtyAt: 0,
         };
-        characterStates.set(C.CharacterID, state);
+        lazyStates.set(C, state);
       }
 
       // Called outside the chat-room draw loop: defer to DrawCharacter.
@@ -115,11 +90,10 @@ export const lazyCanvas: Optimization = {
           state.isDirty = true;
         }
         state.lastHash = null;
-        state.skipTimes++;
+        flagSkip();
         return undefined;
       }
 
-      state.lastSeen = now;
       let allowDraw = false;
       let currentHash: number | null = null;
 
@@ -145,23 +119,22 @@ export const lazyCanvas: Optimization = {
       }
 
       if (!allowDraw) {
-        state.skipTimes++;
+        flagSkip();
         return undefined;
       }
 
-      const start = performance.now();
+      // Let the paint run; the render tracker (outer hook) measures and records it.
       const res = next(args);
-      const elapsed = performance.now() - start;
 
       state.lastHash = currentHash;
-      state.drawPerformanceSum += elapsed;
-      state.drawTimes++;
-      state.drawPerformanceAvg = state.drawPerformanceSum / state.drawTimes;
-
       const after = Date.now();
       state.nextForceDraw = after + FORCE_DRAW_MS;
-      // Back off proportionally to how expensive this character is to draw.
-      state.nextStaleDraw = after + state.drawPerformanceAvg * 100;
+      // Back off proportionally to how expensive this character is to draw. The
+      // current rebuild is recorded by the tracker after we return, so this reads
+      // the running average up to (not including) it — fine for a heuristic.
+      const prior = getRenderStat(C);
+      const avg = prior && prior.rebuilds ? prior.totalMs / prior.rebuilds : 0;
+      state.nextStaleDraw = after + avg * 100;
       return res;
     });
 
@@ -170,8 +143,8 @@ export const lazyCanvas: Optimization = {
       if (flags.lazyCanvas) {
         const C = args[0] as Character | undefined;
         if (C && C.CharacterID) {
-          const state = characterStates.get(C.CharacterID);
-          if (state && state.isDirty && Date.now() - (state.dirtyAt ?? 0) > 1000) {
+          const state = lazyStates.get(C);
+          if (state && state.isDirty && Date.now() - state.dirtyAt > 1000) {
             forceBuildCanvas = true;
             try {
               CharacterAppearanceBuildCanvas(C);
@@ -184,16 +157,14 @@ export const lazyCanvas: Optimization = {
       }
       return next(args);
     });
-
-    // Forget characters unseen for 60s.
-    setInterval(() => {
-      const now = Date.now();
-      for (const [key, state] of characterStates) {
-        if (now - state.lastSeen > 60000) characterStates.delete(key);
-      }
-    }, 1000);
   },
   onDisabled() {
-    refreshTrackedCharacters();
+    // Hand control back to BC: flag every loaded character dirty so its next
+    // DrawCharacter rebuilds the canvas we may have left stale (MustDraw is exactly
+    // the engine's own "needs a rebuild" signal). Our WeakMap state is dropped with
+    // the characters; no manual teardown needed.
+    if (typeof Character !== "undefined") {
+      for (const C of Character) C.MustDraw = true;
+    }
   },
 };

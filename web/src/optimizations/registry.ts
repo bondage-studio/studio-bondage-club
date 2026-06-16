@@ -1,13 +1,11 @@
-// The set of optimizations and the two operations the loader needs: install every
-// module's hooks once, and push a profile's feature set onto the live flags.
-
 import type { OptimizationFeatures } from "@/types";
 
 import { chatLogTrim } from "./features/chatLogTrim";
 import { idleFpsThrottle } from "./features/idleFpsThrottle";
+import { installFrameRecorder } from "./features/frameRecorder";
 import { lazyCanvas } from "./features/lazyCanvas";
+import { installRenderTracker } from "./features/renderTracker";
 import { skipValidation } from "./features/skipValidation";
-import { installTickRecorder } from "./features/tickRecorder";
 import { dbg } from "./debug";
 import { flags } from "./flags";
 import type { Optimization } from "./optimization";
@@ -47,8 +45,9 @@ export async function installHooks(mod: ModSDKModAPI): Promise<void> {
     dbg(`installed hook: ${opt.key}`);
   }
   // Always-on telemetry — not a configurable feature, so installed directly.
-  installTickRecorder(mod);
-  dbg(`all ${OPTIMIZATIONS.length} optimizations installed (+ tick recorder)`);
+  installFrameRecorder(mod);
+  installRenderTracker(mod);
+  dbg(`all ${OPTIMIZATIONS.length} optimizations installed (+ frame recorder, render tracker)`);
 }
 
 /**

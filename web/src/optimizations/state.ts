@@ -1,9 +1,4 @@
-// Trigger state machine. Watches input idleness and tab visibility/focus, walks
-// the configured rules (first match wins) to pick a profile, and hands that
-// profile's feature set to the registry (which drives the live flags). Re-evaluated
-// on input/visibility/focus events and a 1s tick (to cross idle thresholds).
-
-import type { OptimizationFeatures, OptimizationSettings } from "@/types";
+import type { OptimizationFeatures, OptimizationSettings, OptimizationTrigger } from "@/types";
 
 import { dbg } from "./debug";
 import { applyFeatures } from "./registry";
@@ -32,22 +27,27 @@ function isBackground(): boolean {
   return document.visibilityState === "hidden" || blurred;
 }
 
-function resolveProfileId(s: OptimizationSettings): string | null {
+/** First matching rule (top to bottom), or null if none fires. */
+function matchRule(s: OptimizationSettings): { profile: string; trigger: OptimizationTrigger } | null {
   for (const rule of s.rules) {
     switch (rule.trigger) {
       case "default":
-        return rule.profile;
+        return { profile: rule.profile, trigger: "default" };
       case "background":
-        if (isBackground()) return rule.profile;
+        if (isBackground()) return { profile: rule.profile, trigger: "background" };
         break;
       case "idle": {
         const ms = (rule.idleSeconds ?? 30) * 1000;
-        if (Date.now() - lastInputAt >= ms) return rule.profile;
+        if (Date.now() - lastInputAt >= ms) return { profile: rule.profile, trigger: "idle" };
         break;
       }
     }
   }
   return null;
+}
+
+function resolveProfileId(s: OptimizationSettings): string | null {
+  return matchRule(s)?.profile ?? null;
 }
 
 function recompute(): void {
@@ -93,6 +93,32 @@ function attachListeners(): void {
 export function startStateMachine(): void {
   attachListeners();
   recompute();
+}
+
+/** What the loader is doing right now, for the panel's live status readout. */
+export interface OptimizationStatus {
+  /** Whether a config is loaded and its master switch is on. */
+  enabled: boolean;
+  /** Profile currently selected by the rules, or null if none matches / disabled. */
+  activeProfileId: string | null;
+  /** Display name of that profile (falls back to the id), or null. */
+  activeProfileName: string | null;
+  /** Why that profile won: the matching rule's trigger. */
+  activeTrigger: OptimizationTrigger | null;
+}
+
+export function getOptimizationStatus(): OptimizationStatus {
+  if (!settings || !settings.enabled) {
+    return { enabled: false, activeProfileId: null, activeProfileName: null, activeTrigger: null };
+  }
+  const match = matchRule(settings);
+  const profile = match ? settings.profiles.find((p) => p.id === match.profile) : undefined;
+  return {
+    enabled: true,
+    activeProfileId: match?.profile ?? null,
+    activeProfileName: match ? (profile?.name ?? match.profile) : null,
+    activeTrigger: match?.trigger ?? null,
+  };
 }
 
 /** Set the config (initial seed or a live push from the panel) and re-evaluate. */
