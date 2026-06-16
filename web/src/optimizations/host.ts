@@ -10,33 +10,39 @@
 
 import { getOptimizationSettings } from "@/api";
 
+import { dbg } from "./debug";
 import { installHooks } from "./registry";
 import { applySettings, startStateMachine } from "./state";
 
 let installed = false;
 
 export function installOptimizationHost(): void {
+  dbg("installOptimizationHost called");
   if (installed) return;
   installed = true;
 
-  if (!window.__bmmHost) {
-    window.__bmmHost = {
-      version: 1,
-      platform: {
-        id: "studio-bondage-club",
-        name: "Studio Bondage Club",
-        version: "1.0",
-        capabilities: ["modsdk"],
-      },
-      onReady: (api) => {
-        void onBmmReady(api);
-      },
-      onEvent: () => {
-        // Reserved for lifecycle events (e.g. reloadRequested); the shell reloads
-        // itself, so nothing to do for now.
-      },
-    };
+  if (window.__bmmHost) {
+    dbg("window.__bmmHost already present; not registering our bridge (onReady won't fire for us)");
+    return;
   }
+  dbg("installing BMM host bridge");
+  window.__bmmHost = {
+    version: 1,
+    platform: {
+      id: "studio-bondage-club",
+      name: "Studio Bondage Club",
+      version: "1.0",
+      capabilities: ["modsdk"],
+    },
+    onReady: (api) => {
+      dbg("BMM onReady fired");
+      void onBmmReady(api);
+    },
+    onEvent: () => {
+      // Reserved for lifecycle events (e.g. reloadRequested); the shell reloads
+      // itself, so nothing to do for now.
+    },
+  };
 }
 
 interface SdkLike {
@@ -55,7 +61,7 @@ function resolveSdk(api: BmmApi): SdkLike | null {
     const raw = typeof sdk.get === "function" ? sdk.get() : null;
     if (raw && typeof raw.registerMod === "function") return raw;
   }
-  if (window.bcModSdk && typeof window.bcModSdk.registerMod === "function") return window.bcModSdk;
+  if (typeof bcModSdk !== "undefined" && typeof bcModSdk.registerMod === "function") return bcModSdk;
   return null;
 }
 
@@ -65,6 +71,7 @@ async function onBmmReady(api: BmmApi): Promise<void> {
     console.warn("[optimizations] Mod SDK unavailable; optimizations disabled");
     return;
   }
+  dbg("SDK resolved; registering mod");
   const mod = sdk.registerMod({
     name: "SodiumPlus",
     fullName: "Sodium Plus (Studio optimization)",
@@ -74,7 +81,9 @@ async function onBmmReady(api: BmmApi): Promise<void> {
     console.warn("[optimizations] registerMod failed; optimizations disabled");
     return;
   }
-  installHooks(mod);
+  dbg("mod registered");
+  // Hooks install once BC's functions exist;
+  void installHooks(mod);
   startStateMachine();
 
   // Seed the state machine from the backend. If the panel (same module graph) has
@@ -85,5 +94,5 @@ async function onBmmReady(api: BmmApi): Promise<void> {
   } catch (err) {
     console.error("[optimizations] failed to load config", err);
   }
-  console.log("[optimizations] installed. Run tps() for stats.");
+  console.log("[optimizations] installed. See the Optimizations tab for live stats.");
 }

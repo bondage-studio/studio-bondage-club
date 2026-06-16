@@ -224,7 +224,6 @@ export const OPTIMIZATION_FEATURE_KEYS = [
   "idleFpsThrottle",
   "skipValidation",
   "chatLogTrim",
-  "tickRecorder",
 ] as const;
 
 export type OptimizationFeatureKey = (typeof OPTIMIZATION_FEATURE_KEYS)[number];

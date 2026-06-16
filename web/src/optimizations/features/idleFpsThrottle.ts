@@ -11,8 +11,8 @@ let skipNextChatRoomDraw = false;
 let lastDrawRectTime = 0;
 
 function inOptimizableChatRoom(): boolean {
-  if (window.CurrentScreen !== "ChatRoom" || window.CurrentCharacter) return false;
-  return !(typeof window.ChatRoomIsViewActive === "function" && window.ChatRoomIsViewActive("Map"));
+  if (CurrentScreen !== "ChatRoom" || CurrentCharacter) return false;
+  return !(typeof ChatRoomIsViewActive === "function" && ChatRoomIsViewActive("Map"));
 }
 
 export const idleFpsThrottle: Optimization = {
@@ -20,7 +20,7 @@ export const idleFpsThrottle: Optimization = {
   install(mod) {
     mod.hookFunction("DrawRect", 10, (args, next) => {
       if (flags.idleFpsThrottle) {
-        const [Left, Top, Width, Height, Color] = args as [number, number, number, number, string];
+        const [Left, Top, Width, Height, Color] = args;
         if (Left === 0 && Top === 0 && Width === 2000 && Height === 1000 && Color === "Black") {
           if (inOptimizableChatRoom()) {
             const now = Date.now();

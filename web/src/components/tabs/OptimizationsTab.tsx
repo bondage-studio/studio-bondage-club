@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react";
 import { getOptimizationSettings, saveOptimizationSettings } from "@/api";
 import { applySettings } from "@/optimizations/state";
+import { PerformanceStats } from "@/components/tabs/PerformanceStats";
 import { Panel } from "@/components/shared/Panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,6 @@ const FEATURES: { key: OptimizationFeatureKey; label: string; hint: string }[] =
   },
   { key: "skipValidation", label: "Skip validation", hint: "Bypass appearance sanitization" },
   { key: "chatLogTrim", label: "Trim chat log", hint: "Cap the in-DOM chat log length" },
-  { key: "tickRecorder", label: "Tick recorder", hint: "Record frame timings for tps()" },
 ];
 
 const TRIGGERS: { value: OptimizationTrigger; label: string }[] = [
@@ -47,7 +47,6 @@ function emptyFeatures(): OptimizationFeatures {
     idleFpsThrottle: false,
     skipValidation: false,
     chatLogTrim: false,
-    tickRecorder: false,
   };
 }
 
@@ -203,6 +202,8 @@ export function OptimizationsTab() {
           </span>
         </label>
       </Panel>
+
+      <PerformanceStats />
 
       <Panel
         title="Profiles"

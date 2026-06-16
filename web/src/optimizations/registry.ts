@@ -7,27 +7,48 @@ import { chatLogTrim } from "./features/chatLogTrim";
 import { idleFpsThrottle } from "./features/idleFpsThrottle";
 import { lazyCanvas } from "./features/lazyCanvas";
 import { skipValidation } from "./features/skipValidation";
-import { tickRecorder } from "./features/tickRecorder";
+import { installTickRecorder } from "./features/tickRecorder";
+import { dbg } from "./debug";
 import { flags } from "./flags";
 import type { Optimization } from "./optimization";
-import { installDiagnostics } from "./tps";
 
-const OPTIMIZATIONS: Optimization[] = [
-  lazyCanvas,
-  idleFpsThrottle,
-  skipValidation,
-  chatLogTrim,
-  tickRecorder,
-];
+const OPTIMIZATIONS: Optimization[] = [lazyCanvas, idleFpsThrottle, skipValidation, chatLogTrim];
 
 let installed = false;
 
-/** Install every optimization's hooks plus the tps() console command. Idempotent. */
-export function installHooks(mod: ModSDKModAPI): void {
-  if (installed) return;
+// Resolves once the game function the hooks patch exists. ChatRoomCharacterViewDraw
+// is defined late in BC's load sequence, so its presence implies the rest are ready.
+function whenGameReady(): Promise<void> {
+  if (typeof ChatRoomCharacterViewDraw === "function") return Promise.resolve();
+  dbg("game not ready; polling for ChatRoomCharacterViewDraw");
+  let polls = 0;
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      polls++;
+      if (typeof ChatRoomCharacterViewDraw === "function") {
+        clearInterval(timer);
+        dbg(`game ready after ${polls} polls (~${polls * 100}ms)`);
+        resolve();
+      }
+    }, 100);
+  });
+}
+
+/** Install every optimization's hooks once BC is ready. Idempotent. */
+export async function installHooks(mod: ModSDKModAPI): Promise<void> {
+  if (installed) {
+    dbg("installHooks called again; already installed");
+    return;
+  }
   installed = true;
-  for (const opt of OPTIMIZATIONS) opt.install(mod);
-  installDiagnostics();
+  await whenGameReady();
+  for (const opt of OPTIMIZATIONS) {
+    opt.install(mod);
+    dbg(`installed hook: ${opt.key}`);
+  }
+  // Always-on telemetry — not a configurable feature, so installed directly.
+  installTickRecorder(mod);
+  dbg(`all ${OPTIMIZATIONS.length} optimizations installed (+ tick recorder)`);
 }
 
 /**
@@ -38,9 +59,10 @@ export function installHooks(mod: ModSDKModAPI): void {
  */
 export function applyFeatures(features: OptimizationFeatures): void {
   for (const opt of OPTIMIZATIONS) {
-    const next = !!features[opt.key];
+    const next = features[opt.key];
     const was = flags[opt.key];
     flags[opt.key] = next;
+    if (was !== next) dbg(`flag ${opt.key}: ${was} -> ${next}`);
     if (was && !next) opt.onDisabled?.();
   }
 }

@@ -3,6 +3,7 @@
 // by DrawCharacter; inside it, a character is rebuilt only when new, on a 5s
 // heartbeat, or when its appearance hash changes.
 
+import { dbg } from "../debug";
 import { flags } from "../flags";
 import type { Optimization } from "../optimization";
 
@@ -20,17 +21,21 @@ export interface CharState {
   dirtyAt?: number;
 }
 
-const characterStates = new Map<number, CharState>();
+// Keyed by Character.CharacterID, which is a string (e.g. "Online-12345").
+const characterStates = new Map<string, CharState>();
 // True while a chat-room character pass is running, so the build hook can tell an
 // in-loop redraw from an out-of-loop deferred one.
 let isDrawing = false;
 // Set while DrawCharacter forces a real rebuild of a stale character so the build
 // hook bypasses its skip logic for that one call.
 let forceBuildCanvas = false;
+// One-shot guard so the build hook logs its first invocation (and the flag state
+// at that moment) without spamming the hot path.
+let loggedBuild = false;
 
 const FORCE_DRAW_MS = 5000;
 
-export function getCharacterStates(): ReadonlyMap<number, CharState> {
+export function getCharacterStates(): ReadonlyMap<string, CharState> {
   return characterStates;
 }
 
@@ -53,8 +58,8 @@ function sodiumHash(updater: string | null | undefined, pointer: { value: number
 // canvases skipped while it was active refresh back to the live look.
 function refreshTrackedCharacters(): void {
   for (const id of characterStates.keys()) {
-    const C = window.Character?.find((c) => c.CharacterID === id);
-    if (C) window.CharacterRefresh?.(C, false);
+    const C = Character.find((c) => c.CharacterID === id);
+    if (C) CharacterRefresh(C, false);
   }
   characterStates.clear();
 }
@@ -75,12 +80,16 @@ export const lazyCanvas: Optimization = {
     });
 
     mod.hookFunction("CharacterAppearanceBuildCanvas", 10, (args, next) => {
+      if (!loggedBuild) {
+        loggedBuild = true;
+        dbg(`CharacterAppearanceBuildCanvas hook entered; lazyCanvas flag=${flags.lazyCanvas}`);
+      }
       if (!flags.lazyCanvas) return next(args);
-      const C = args[0] as BcCharacter | undefined;
+      const C = args[0] as Character | undefined;
       // Characters without an ID (appearance-editor dummy, mod probes) build normally.
       if (!C || !C.CharacterID) return undefined;
       if (forceBuildCanvas) return next(args);
-      if (window.CurrentScreen !== "ChatRoom" || window.CurrentCharacter) return next(args);
+      if (CurrentScreen !== "ChatRoom" || CurrentCharacter) return next(args);
 
       const now = Date.now();
       let state = characterStates.get(C.CharacterID);
@@ -159,13 +168,13 @@ export const lazyCanvas: Optimization = {
     // Flush a character whose rebuild was deferred while it was off the draw loop.
     mod.hookFunction("DrawCharacter", 10, (args, next) => {
       if (flags.lazyCanvas) {
-        const C = args[0] as BcCharacter | undefined;
+        const C = args[0] as Character | undefined;
         if (C && C.CharacterID) {
           const state = characterStates.get(C.CharacterID);
           if (state && state.isDirty && Date.now() - (state.dirtyAt ?? 0) > 1000) {
             forceBuildCanvas = true;
             try {
-              window.CharacterAppearanceBuildCanvas?.(C);
+              CharacterAppearanceBuildCanvas(C);
             } finally {
               forceBuildCanvas = false;
             }

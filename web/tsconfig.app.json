@@ -20,6 +20,9 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "node_modules/bc-stubs/bc/**/*.d.ts"
+  ],
   "exclude": ["src/service-worker.ts"]
 }

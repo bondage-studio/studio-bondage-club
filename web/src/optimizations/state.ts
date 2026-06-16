@@ -5,6 +5,7 @@
 
 import type { OptimizationFeatures, OptimizationSettings } from "@/types";
 
+import { dbg } from "./debug";
 import { applyFeatures } from "./registry";
 
 const ALL_OFF: OptimizationFeatures = {
@@ -12,7 +13,6 @@ const ALL_OFF: OptimizationFeatures = {
   idleFpsThrottle: false,
   skipValidation: false,
   chatLogTrim: false,
-  tickRecorder: false,
 };
 
 const INPUT_EVENTS = ["mousedown", "keydown", "mousemove", "touchstart", "wheel"] as const;
@@ -54,6 +54,7 @@ function recompute(): void {
   if (!settings || !settings.enabled) {
     if (appliedProfileId !== "__off__") {
       appliedProfileId = "__off__";
+      dbg(settings ? "config disabled (enabled=false); all features off" : "no config yet; all features off");
       applyFeatures(ALL_OFF);
     }
     return;
@@ -62,6 +63,11 @@ function recompute(): void {
   if (id === appliedProfileId) return;
   appliedProfileId = id;
   const profile = id ? settings.profiles.find((p) => p.id === id) : undefined;
+  if (id && !profile) {
+    dbg(`rule matched profile "${id}" but no such profile exists; all features off`);
+  } else {
+    dbg(`profile -> ${id ?? "(none)"}`, profile ? profile.features : ALL_OFF);
+  }
   applyFeatures(profile ? profile.features : ALL_OFF);
 }
 
@@ -91,6 +97,11 @@ export function startStateMachine(): void {
 
 /** Set the config (initial seed or a live push from the panel) and re-evaluate. */
 export function applySettings(next: OptimizationSettings): void {
+  dbg("applySettings", {
+    enabled: next.enabled,
+    rules: next.rules?.length ?? 0,
+    profiles: next.profiles?.map((p) => p.id),
+  });
   settings = next;
   appliedProfileId = undefined; // force a re-apply against the new config
   recompute();
