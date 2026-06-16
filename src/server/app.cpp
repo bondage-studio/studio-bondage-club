@@ -243,6 +243,10 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
                                                   cfg.game_server_settings);
     userscripts_ = UserscriptStore::open(config::userscript_storage_dir(cfg));
     for (const auto& spec : builtin_userscripts()) userscripts_->ensure_builtin(spec);
+    // The host bridge + Sodium optimizations moved into the shell loader
+    // (web/src/optimizations); drop the now-defunct builtin from stores that
+    // seeded it before the move.
+    userscripts_->remove("builtin-studio-host");
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
@@ -431,7 +435,8 @@ void App::register_rpc_methods() {
          {"userscripts.list", "userscripts.save", "userscripts.delete", "userscripts.reorder",
           "userscripts.pending", "userscripts.applyUpdate", "userscripts.dismissUpdate",
           "userscripts.values.get", "userscripts.values.set", "userscripts.values.delete",
-          "userscripts.settings.get", "userscripts.settings.set", "userscripts.checkUpdates"}) {
+          "userscripts.settings.get", "userscripts.settings.set", "userscripts.checkUpdates",
+          "userscripts.optimization.get", "userscripts.optimization.set"}) {
         std::string name = m;
         d.add(name, [this, name](const ordered_json& p) { return rpc_userscript(name, p); });
     }
@@ -572,6 +577,19 @@ asio::awaitable<ordered_json> App::rpc_userscript(const std::string& method,
             throw rpc::RpcError("bad_request", "settings must be a JSON object");
         co_await net::run_blocking(bp, [store, settings]() { store->set_settings(settings); });
         co_return as_ordered(settings);
+    }
+    if (method == "userscripts.optimization.get") {
+        nlohmann::json o =
+            co_await net::run_blocking(bp, [store]() { return store->get_optimization(); });
+        co_return as_ordered(o);
+    }
+    if (method == "userscripts.optimization.set") {
+        nlohmann::json optimization = nlohmann::json::parse(params.dump());
+        if (!optimization.is_object())
+            throw rpc::RpcError("bad_request", "optimization must be a JSON object");
+        co_await net::run_blocking(
+            bp, [store, optimization]() { store->set_optimization(optimization); });
+        co_return as_ordered(optimization);
     }
     if (method == "userscripts.checkUpdates") {
         nlohmann::json summary = co_await userscript_updater_->check_now();

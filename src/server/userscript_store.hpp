@@ -56,6 +56,13 @@ public:
     nlohmann::json get_settings();
     void set_settings(const nlohmann::json& settings);
 
+    // Render-optimization config (profiles + trigger rules). Stored under its own
+    // meta key, decoupled from update settings. Consumed by the shell's
+    // optimization loader (web/src/optimizations) via the userscripts.optimization
+    // RPC methods. See get_settings for the missing-key backfill behaviour.
+    nlohmann::json get_optimization();
+    void set_optimization(const nlohmann::json& optimization);
+
 private:
     UserscriptStore(std::string dir, leveldb::DB* db);
 

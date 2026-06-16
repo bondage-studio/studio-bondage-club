@@ -32,6 +32,7 @@ std::string value_key(const std::string& id, const std::string& key) {
     return value_prefix(id) + key;
 }
 constexpr const char* kSettingsKey = "meta/settings";
+constexpr const char* kOptimizationKey = "meta/optimization";
 
 bool starts_with(const leveldb::Slice& s, const std::string& prefix) {
     return s.size() >= prefix.size() && std::memcmp(s.data(), prefix.data(), prefix.size()) == 0;
@@ -45,6 +46,40 @@ std::int64_t now_millis() {
 
 json default_settings() {
     return json{{"updateIntervalHours", 6}};
+}
+
+// Default optimization config: foreground ("default" rule) maps to the all-off
+// "off" profile so the game is untouched while active; idle/background engage the
+// progressively more aggressive "quiet"/"eco" profiles. Mirrors the schema the
+// shell loader and the panel's Optimizations tab expect.
+json default_optimization() {
+    auto features = [](bool lazyCanvas, bool idleFpsThrottle, bool skipValidation, bool chatLogTrim,
+                       bool tickRecorder) {
+        return json{{"lazyCanvas", lazyCanvas},
+                    {"idleFpsThrottle", idleFpsThrottle},
+                    {"skipValidation", skipValidation},
+                    {"chatLogTrim", chatLogTrim},
+                    {"tickRecorder", tickRecorder}};
+    };
+    return json{
+        {"enabled", true},
+        {"profiles", json::array({
+                         json{{"id", "off"},
+                              {"name", "Off"},
+                              {"features", features(false, false, false, false, false)}},
+                         json{{"id", "eco"},
+                              {"name", "Eco"},
+                              {"features", features(true, true, true, true, false)}},
+                         json{{"id", "quiet"},
+                              {"name", "Quiet"},
+                              {"features", features(true, false, false, true, false)}},
+                     })},
+        {"rules", json::array({
+                      json{{"trigger", "background"}, {"profile", "eco"}},
+                      json{{"trigger", "idle"}, {"idleSeconds", 30}, {"profile", "quiet"}},
+                      json{{"trigger", "default"}, {"profile", "off"}},
+                  })},
+    };
 }
 
 }  // namespace
@@ -272,6 +307,32 @@ void UserscriptStore::set_settings(const json& settings) {
     wo.sync = true;
     leveldb::Status s = db_->Put(wo, kSettingsKey, settings.dump());
     if (!s.ok()) throw Error(std::string("userscript set_settings: ") + s.ToString());
+}
+
+json UserscriptStore::get_optimization() {
+    std::string val;
+    leveldb::Status s = db_->Get(leveldb::ReadOptions(), kOptimizationKey, &val);
+    if (s.IsNotFound()) return default_optimization();
+    if (!s.ok()) throw Error(std::string("userscript get_optimization: ") + s.ToString());
+    try {
+        json parsed = json::parse(val);
+        // Backfill top-level keys only; profiles/rules are owned wholesale by the
+        // client so they are not merged field-by-field.
+        json defaults = default_optimization();
+        for (auto& [k, v] : defaults.items()) {
+            if (!parsed.contains(k)) parsed[k] = v;
+        }
+        return parsed;
+    } catch (...) {
+        return default_optimization();
+    }
+}
+
+void UserscriptStore::set_optimization(const json& optimization) {
+    leveldb::WriteOptions wo;
+    wo.sync = true;
+    leveldb::Status s = db_->Put(wo, kOptimizationKey, optimization.dump());
+    if (!s.ok()) throw Error(std::string("userscript set_optimization: ") + s.ToString());
 }
 
 }  // namespace sbc::server

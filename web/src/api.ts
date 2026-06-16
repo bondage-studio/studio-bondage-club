@@ -8,6 +8,7 @@ import type {
   GameServerStatus,
   PendingUpdate,
   ScopeUpdateResponse,
+  OptimizationSettings,
   Userscript,
   UserscriptSettings,
 } from "@/types";
@@ -109,6 +110,16 @@ export function saveUserscriptSettings(settings: UserscriptSettings): Promise<Us
 
 export function checkUserscriptUpdates(): Promise<CheckUpdatesSummary> {
   return rpcClient.call<CheckUpdatesSummary>("userscripts.checkUpdates");
+}
+
+export function getOptimizationSettings(): Promise<OptimizationSettings> {
+  return rpcClient.call<OptimizationSettings>("userscripts.optimization.get");
+}
+
+export function saveOptimizationSettings(
+  settings: OptimizationSettings,
+): Promise<OptimizationSettings> {
+  return rpcClient.call<OptimizationSettings>("userscripts.optimization.set", settings);
 }
 
 export function getPendingUpdate(id: string): Promise<PendingUpdate> {

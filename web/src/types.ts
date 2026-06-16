@@ -213,6 +213,47 @@ export interface UserscriptSettings {
   updateIntervalHours: number;
 }
 
+/**
+ * Render-optimization config consumed by the shell loader (src/optimizations).
+ * A profile names a set of optimization toggles; an ordered rules list maps a
+ * trigger (background / idle / default) to a profile, first match wins. Stored in
+ * the userscript LevelDB store under `meta/optimization`.
+ */
+export const OPTIMIZATION_FEATURE_KEYS = [
+  "lazyCanvas",
+  "idleFpsThrottle",
+  "skipValidation",
+  "chatLogTrim",
+  "tickRecorder",
+] as const;
+
+export type OptimizationFeatureKey = (typeof OPTIMIZATION_FEATURE_KEYS)[number];
+
+export type OptimizationFeatures = Record<OptimizationFeatureKey, boolean>;
+
+export interface OptimizationProfile {
+  id: string;
+  name: string;
+  features: OptimizationFeatures;
+}
+
+export type OptimizationTrigger = "background" | "idle" | "default";
+
+export interface OptimizationRule {
+  trigger: OptimizationTrigger;
+  /** Only meaningful when `trigger === "idle"`: input-idle threshold in seconds. */
+  idleSeconds?: number;
+  /** Id of the profile to apply when this rule matches. */
+  profile: string;
+}
+
+export interface OptimizationSettings {
+  /** Master switch: when false the loader installs no hooks at all. */
+  enabled: boolean;
+  profiles: OptimizationProfile[];
+  rules: OptimizationRule[];
+}
+
 export interface CheckUpdatesSummary {
   checked: number;
   updates: Array<{

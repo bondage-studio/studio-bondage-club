@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   Smartphone,
   Wifi,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -23,6 +24,7 @@ import { GameServerTab } from "@/components/tabs/GameServerTab";
 import { GameSettingsTab } from "@/components/tabs/GameSettingsTab";
 import { AndroidTab } from "@/components/tabs/AndroidTab";
 import { ModeTab } from "@/components/tabs/ModeTab";
+import { OptimizationsTab } from "@/components/tabs/OptimizationsTab";
 import { PackageTab } from "@/components/tabs/PackageTab";
 import { UserscriptsTab } from "@/components/tabs/UserscriptsTab";
 import { Button } from "@/components/ui/button";
@@ -44,11 +46,11 @@ import type {
   StoreConfig,
 } from "@/types";
 
-type PanelTab = ConfigScopeName | "userscripts";
+type PanelTab = ConfigScopeName | "userscripts" | "optimizations";
 
 // Tabs that own their own state and persistence, independent of the form/scope
 // machinery (no scopeSlice, no SectionBar save flow).
-const SELF_MANAGED_TABS: PanelTab[] = ["userscripts"];
+const SELF_MANAGED_TABS: PanelTab[] = ["userscripts", "optimizations"];
 
 type PageDef = {
   id: PanelTab;
@@ -101,6 +103,12 @@ const allPages: PageDef[] = [
     icon: <ScrollText size={16} />,
     label: "Userscripts",
     description: "Install and manage Tampermonkey-style userscripts for the game page.",
+  },
+  {
+    id: "optimizations",
+    icon: <Zap size={16} />,
+    label: "Optimizations",
+    description: "Profile-driven render optimizations that engage when idle or backgrounded.",
   },
   {
     id: "android",
@@ -458,6 +466,8 @@ function App() {
                   <div className="@container p-3">
                     {tab === "userscripts" ? (
                       <UserscriptsTab />
+                    ) : tab === "optimizations" ? (
+                      <OptimizationsTab />
                     ) : !form || !snapshot ? (
                       <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
                     ) : (
