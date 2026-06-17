@@ -27,19 +27,34 @@ let loggedBuild = false;
 
 const FORCE_DRAW_MS = 5000;
 
-// Cheap 16-bit rolling hash over item descriptions: a fast staleness signal.
-function sodiumHash(updater: string | null | undefined, pointer: { value: number }): void {
-  let h = pointer.value;
-  if (!updater) {
-    h = h * 31 + 17;
-  } else {
-    const len = updater.length;
-    h = h * 31 + len;
-    h = h * 31 + (updater.charCodeAt(0) || 0);
-    h = h * 31 + (updater.charCodeAt(len >> 1) || 0);
-    h = h * 31 + (updater.charCodeAt(len - 1) || 0);
+function fold(s: string, h: number): number {
+  h = (h * 31 + s.length) | 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
   }
-  pointer.value = h & 0xffff;
+  return h;
+}
+
+function appearanceHash(C: Character): number {
+  let h = 0;
+  const app = C.Appearance;
+  if (app) {
+    for (let i = 0; i < app.length; i++) {
+      const item = app[i];
+      if (!item || !item.Asset) {
+        h = fold("∅", h);
+        continue;
+      }
+      const a = item.Asset;
+      h = fold(a.Group ? a.Group.Name : "", h);
+      h = fold(a.Name || "", h);
+      if (item.Color != null) h = fold(JSON.stringify(item.Color), h);
+      if (item.Property != null) h = fold(JSON.stringify(item.Property), h);
+    }
+  }
+  // Resolved pose (BodyLower/BodyUpper/BodyFull/BodyHands/...): not in Appearance.
+  if (C.PoseMapping) h = fold(JSON.stringify(C.PoseMapping), h);
+  return h;
 }
 
 export const lazyCanvas: Optimization = {
@@ -104,15 +119,7 @@ export const lazyCanvas: Optimization = {
         // Heartbeat redraw guards against hash collisions leaving a stale canvas.
         allowDraw = true;
       } else {
-        const pointer = { value: 0 };
-        if (C.Appearance) {
-          for (let i = 0; i < C.Appearance.length; i++) {
-            const item = C.Appearance[i];
-            const desc = item && item.Asset ? item.Asset.Description : null;
-            sodiumHash(desc, pointer);
-          }
-        }
-        currentHash = pointer.value;
+        currentHash = appearanceHash(C);
         if (currentHash !== state.lastHash && now > state.nextStaleDraw) {
           allowDraw = true;
         }
