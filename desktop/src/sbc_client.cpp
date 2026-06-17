@@ -61,6 +61,15 @@ void SbcClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     }
 }
 
+void SbcClient::ApplyDesktopConfig(int width, int height) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!browser_) return;
+    CefRefPtr<CefBrowserView> view = CefBrowserView::GetForBrowser(browser_);
+    if (!view) return;
+    CefRefPtr<CefWindow> window = view->GetWindow();
+    if (window) window->SetSize(CefSize(width, height));
+}
+
 void SbcClient::SendFrameToRenderer(std::string frame) {
     CEF_REQUIRE_UI_THREAD();
     if (!browser_) {

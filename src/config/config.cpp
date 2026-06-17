@@ -267,6 +267,12 @@ void Config::validate() const {
         throw ValidationError(
             "gameServerSettings requires roomLimitMin <= roomLimitDefault <= roomLimitMax");
     }
+
+#if defined(SBC_DESKTOP)
+    if (desktop.window_width <= 0 || desktop.window_height <= 0) {
+        throw ValidationError("desktop windowWidth and windowHeight must be positive");
+    }
+#endif
 }
 
 Config normalize(Config c) {
@@ -285,173 +291,47 @@ Config normalize(Config c) {
     return c;
 }
 
-// JSON (de)serialization uses camelCase keys and omits empty values.
+// JSON (de)serialization uses camelCase keys and omits empty values. The field
+// lists live in config.hpp (SBC_<Type>_FIELDS); the bodies are generated so the
+// wire format and the strict allowed-key set can never drift from the structs.
 
-void to_json(ordered_json& j, const ServerConfig& s) {
-    j = ordered_json::object();
-    j["host"] = s.host;
-    j["port"] = s.port;
-    j["adminBasePath"] = s.admin_base_path;
-}
-
-void from_json(const ordered_json& j, ServerConfig& s) {
-    if (auto it = j.find("host"); it != j.end()) s.host = it->get<std::string>();
-    if (auto it = j.find("port"); it != j.end()) s.port = it->get<int>();
-    if (auto it = j.find("adminBasePath"); it != j.end())
-        s.admin_base_path = it->get<std::string>();
-}
-
-void to_json(ordered_json& j, const StoreConfig& s) {
-    j = ordered_json::object();
-    j["name"] = s.name;
-    if (!s.dir.empty()) j["dir"] = s.dir;
-    if (s.max_size_bytes != 0) j["maxSizeBytes"] = s.max_size_bytes;
-    if (s.default_ttl_seconds.has_value()) j["defaultTTLSeconds"] = *s.default_ttl_seconds;
-}
-
-void from_json(const ordered_json& j, StoreConfig& s) {
-    if (auto it = j.find("name"); it != j.end()) s.name = it->get<std::string>();
-    if (auto it = j.find("dir"); it != j.end()) s.dir = it->get<std::string>();
-    if (auto it = j.find("maxSizeBytes"); it != j.end()) s.max_size_bytes = it->get<std::int64_t>();
-    if (auto it = j.find("defaultTTLSeconds"); it != j.end() && !it->is_null())
-        s.default_ttl_seconds = it->get<int>();
-}
-
-void to_json(ordered_json& j, const CacheConfig& c) {
-    j = ordered_json::object();
-    j["dir"] = c.dir;
-    j["defaultTTLSeconds"] = c.default_ttl_seconds;
-    j["maxSizeBytes"] = c.max_size_bytes;
-    if (!c.stores.empty()) j["stores"] = c.stores;
-    if (!c.rules.empty()) j["rules"] = c.rules;
-}
-
-void from_json(const ordered_json& j, CacheConfig& c) {
-    if (auto it = j.find("dir"); it != j.end()) c.dir = it->get<std::string>();
-    if (auto it = j.find("defaultTTLSeconds"); it != j.end())
-        c.default_ttl_seconds = it->get<int>();
-    if (auto it = j.find("maxSizeBytes"); it != j.end()) c.max_size_bytes = it->get<std::int64_t>();
-    if (auto it = j.find("stores"); it != j.end()) c.stores = it->get<std::vector<StoreConfig>>();
-    if (auto it = j.find("rules"); it != j.end())
-        c.rules = it->get<std::vector<cache::CacheRule>>();
-}
-
-void to_json(ordered_json& j, const PackageConfig& p) {
-    j = ordered_json::object();
-    j["dir"] = p.dir;
-    j["manifestUrl"] = p.manifest_url;
-}
-
-void from_json(const ordered_json& j, PackageConfig& p) {
-    if (auto it = j.find("dir"); it != j.end()) p.dir = it->get<std::string>();
-    if (auto it = j.find("manifestUrl"); it != j.end()) p.manifest_url = it->get<std::string>();
-}
-
-void to_json(ordered_json& j, const GameServerConfig& g) {
-    // Emit every field so the admin panel always has concrete values to render
-    // and edit.
-    j = ordered_json::object();
-    j["pingIntervalMs"] = g.ping_interval_ms;
-    j["pingTimeoutMs"] = g.ping_timeout_ms;
-    j["maxPayloadBytes"] = g.max_payload_bytes;
-    j["messageRatePerSec"] = g.message_rate_per_sec;
-    j["ipConnectionLimit"] = g.ip_connection_limit;
-    j["ipConnectionRatePerSec"] = g.ip_connection_rate_per_sec;
-    j["accountCreatePerDay"] = g.account_create_per_day;
-    j["accountCreatePerHour"] = g.account_create_per_hour;
-    j["loginPaceMs"] = g.login_pace_ms;
-    j["loginQueueThreshold"] = g.login_queue_threshold;
-    j["pbkdf2Iterations"] = g.pbkdf2_iterations;
-    j["passwordResetThrottleMs"] = g.password_reset_throttle_ms;
-    j["relationshipDelayMs"] = g.relationship_delay_ms;
-    j["serverInfoIntervalSec"] = g.server_info_interval_sec;
-    j["delayedFlushIntervalSec"] = g.delayed_flush_interval_sec;
-    j["searchMaxResults"] = g.search_max_results;
-    j["roomLimitDefault"] = g.room_limit_default;
-    j["roomLimitMin"] = g.room_limit_min;
-    j["roomLimitMax"] = g.room_limit_max;
-    j["descriptionMaxLen"] = g.description_max_len;
-    j["emailMaxLen"] = g.email_max_len;
-    j["nameMaxLen"] = g.name_max_len;
-    j["ownershipNotesMaxLen"] = g.ownership_notes_max_len;
-}
-
-void from_json(const ordered_json& j, GameServerConfig& g) {
-    auto get_i = [&](const char* k, int& dst) {
-        if (auto it = j.find(k); it != j.end()) dst = it->get<int>();
-    };
-    get_i("pingIntervalMs", g.ping_interval_ms);
-    get_i("pingTimeoutMs", g.ping_timeout_ms);
-    get_i("maxPayloadBytes", g.max_payload_bytes);
-    get_i("messageRatePerSec", g.message_rate_per_sec);
-    get_i("ipConnectionLimit", g.ip_connection_limit);
-    get_i("ipConnectionRatePerSec", g.ip_connection_rate_per_sec);
-    get_i("accountCreatePerDay", g.account_create_per_day);
-    get_i("accountCreatePerHour", g.account_create_per_hour);
-    get_i("loginPaceMs", g.login_pace_ms);
-    get_i("loginQueueThreshold", g.login_queue_threshold);
-    get_i("pbkdf2Iterations", g.pbkdf2_iterations);
-    get_i("passwordResetThrottleMs", g.password_reset_throttle_ms);
-    if (auto it = j.find("relationshipDelayMs"); it != j.end())
-        g.relationship_delay_ms = it->get<std::int64_t>();
-    get_i("serverInfoIntervalSec", g.server_info_interval_sec);
-    get_i("delayedFlushIntervalSec", g.delayed_flush_interval_sec);
-    get_i("searchMaxResults", g.search_max_results);
-    get_i("roomLimitDefault", g.room_limit_default);
-    get_i("roomLimitMin", g.room_limit_min);
-    get_i("roomLimitMax", g.room_limit_max);
-    get_i("descriptionMaxLen", g.description_max_len);
-    get_i("emailMaxLen", g.email_max_len);
-    get_i("nameMaxLen", g.name_max_len);
-    get_i("ownershipNotesMaxLen", g.ownership_notes_max_len);
-}
+SBC_DEFINE_STRUCT_JSON(ServerConfig)
+SBC_DEFINE_STRUCT_JSON(StoreConfig)
+SBC_DEFINE_STRUCT_JSON(CacheConfig)
+SBC_DEFINE_STRUCT_JSON(PackageConfig)
+// Every game-settings field is ALWAYS-emit so the admin panel always has
+// concrete values to render and edit.
+SBC_DEFINE_STRUCT_JSON(GameServerConfig)
 
 #if defined(__ANDROID__)
-void to_json(ordered_json& j, const AndroidConfig& a) {
-    j = ordered_json::object();
-    j["hardwareAcceleration"] = a.hardware_acceleration;
-}
-
-void from_json(const ordered_json& j, AndroidConfig& a) {
-    if (auto it = j.find("hardwareAcceleration"); it != j.end())
-        a.hardware_acceleration = it->get<bool>();
-}
+SBC_DEFINE_STRUCT_JSON(AndroidConfig)
 #endif
 
-void to_json(ordered_json& j, const Config& c) {
-    j = ordered_json::object();
-    j["server"] = c.server;
-    j["mode"] = c.mode;
-    j["upstream"] = c.upstream;
-    j["gameServer"] = c.game_server;
-    j["socks5Proxy"] = c.socks5_proxy;
-    j["localGameServer"] = c.local_game_server;
-    j["gameServerStoragePath"] = c.game_server_storage_path;
-    j["gameServerSettings"] = c.game_server_settings;
-    j["cache"] = c.cache;
-    j["package"] = c.package;
+#if defined(SBC_DESKTOP)
+SBC_DEFINE_STRUCT_JSON(DesktopConfig)
+#endif
+
+// Config mixes generated fields with conditionally-compiled members (android,
+// desktop), so its body is hand-rolled around the shared field-list fragments.
+void to_json(ordered_json& j, const Config& v) {
+    SBC_TO_JSON_BODY(Config)
 #if defined(__ANDROID__)
-    j["android"] = c.android;
+    j["android"] = v.android;
+#endif
+#if defined(SBC_DESKTOP)
+    j["desktop"] = v.desktop;
 #endif
 }
 
-void from_json(const ordered_json& j, Config& c) {
+void from_json(const ordered_json& j, Config& v) {
     // Merge into the existing (default-initialized) structs so absent keys keep
     // their defaults.
-    if (auto it = j.find("server"); it != j.end()) from_json(*it, c.server);
-    if (auto it = j.find("mode"); it != j.end()) c.mode = it->get<std::string>();
-    if (auto it = j.find("upstream"); it != j.end()) c.upstream = it->get<std::string>();
-    if (auto it = j.find("gameServer"); it != j.end()) c.game_server = it->get<std::string>();
-    if (auto it = j.find("socks5Proxy"); it != j.end()) c.socks5_proxy = it->get<std::string>();
-    if (auto it = j.find("localGameServer"); it != j.end()) c.local_game_server = it->get<bool>();
-    if (auto it = j.find("gameServerStoragePath"); it != j.end())
-        c.game_server_storage_path = it->get<std::string>();
-    if (auto it = j.find("gameServerSettings"); it != j.end())
-        from_json(*it, c.game_server_settings);
-    if (auto it = j.find("cache"); it != j.end()) from_json(*it, c.cache);
-    if (auto it = j.find("package"); it != j.end()) from_json(*it, c.package);
+    SBC_FROM_JSON_BODY(Config)
 #if defined(__ANDROID__)
-    if (auto it = j.find("android"); it != j.end()) from_json(*it, c.android);
+    read_field(j, "android", v.android);
+#endif
+#if defined(SBC_DESKTOP)
+    read_field(j, "desktop", v.desktop);
 #endif
 }
 

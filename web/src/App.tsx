@@ -1,6 +1,7 @@
 import {
   Gamepad2,
   HardDrive,
+  Monitor,
   Package,
   RotateCcw,
   ScrollText,
@@ -11,7 +12,7 @@ import {
   Wifi,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { clearCache, loadConfig, loadGameServerStatus, resetConfig, saveConfigScope } from "@/api";
 import { CacheMigrateDialog } from "@/components/cache/CacheMigrateDialog";
@@ -23,6 +24,7 @@ import { ConnectionTab } from "@/components/tabs/ConnectionTab";
 import { GameServerTab } from "@/components/tabs/GameServerTab";
 import { GameSettingsTab } from "@/components/tabs/GameSettingsTab";
 import { AndroidTab } from "@/components/tabs/AndroidTab";
+import { DesktopTab } from "@/components/tabs/DesktopTab";
 import { ModeTab } from "@/components/tabs/ModeTab";
 import { OptimizationsTab } from "@/components/tabs/OptimizationsTab";
 import { PackageTab } from "@/components/tabs/PackageTab";
@@ -33,13 +35,15 @@ import { MasterDetail } from "@/components/ui/master-detail";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Window } from "@/components/ui/window";
 import { copyScope, scopeSlice, tierMessages } from "@/config/scope";
+import { useConfigSync } from "@/hooks/useConfigSync";
 import { useSSE } from "@/hooks/useSSE";
 import { errorMessage } from "@/lib/utils";
-import { IS_ANDROID_BUILD } from "@/lib/platform";
+import { IS_ANDROID_BUILD, isDesktopRuntime } from "@/lib/platform";
 import { getGameServerMode, setGameServerMode, type GameServerMode } from "@/originalPage";
 import type {
   AppConfig,
   CacheRule,
+  ConfigEvent,
   ConfigResponse,
   ConfigScopeName,
   GameServerStatus,
@@ -47,6 +51,17 @@ import type {
 } from "@/types";
 
 type PanelTab = ConfigScopeName | "userscripts" | "optimizations";
+
+// Every config scope, used to reconcile a full snapshot. android/desktop only
+// exist in their respective builds, so they're appended only when present.
+const BASE_CONFIG_SCOPES: ConfigScopeName[] = [
+  "connection",
+  "cache",
+  "gameserver",
+  "gamesettings",
+  "mode",
+  "package",
+];
 
 // Tabs that own their own state and persistence, independent of the form/scope
 // machinery (no scopeSlice, no SectionBar save flow).
@@ -59,7 +74,11 @@ type PageDef = {
   description: string;
   androidHidden?: boolean;
   androidOnly?: boolean;
+  desktopOnly?: boolean;
 };
+
+// The desktop reuses the web bundle, so its tab is gated on runtime detection.
+const IS_DESKTOP = isDesktopRuntime();
 
 const allPages: PageDef[] = [
   {
@@ -117,10 +136,23 @@ const allPages: PageDef[] = [
     description: "Settings specific to the Android app.",
     androidOnly: true,
   },
+  {
+    id: "desktop",
+    icon: <Monitor size={16} />,
+    label: "Desktop",
+    description: "Settings specific to the desktop app.",
+    desktopOnly: true,
+  },
 ];
 
-// Desktop build drops androidOnly tabs; Android build drops androidHidden tabs.
-const pages = allPages.filter((p) => (IS_ANDROID_BUILD ? !p.androidHidden : !p.androidOnly));
+// androidOnly tabs appear only in the Android build; desktopOnly tabs only in the
+// desktop CEF host; androidHidden tabs are dropped from the Android build.
+const pages = allPages.filter((p) => {
+  if (p.androidOnly) return IS_ANDROID_BUILD;
+  if (p.desktopOnly) return IS_DESKTOP;
+  if (p.androidHidden) return !IS_ANDROID_BUILD;
+  return true;
+});
 
 function App() {
   const [snapshot, setSnapshot] = useState<ConfigResponse | null>(null);
@@ -148,6 +180,71 @@ function App() {
   // localStorage); flipping it forces the live BC connection to reconnect onto the
   // other endpoint. The backend localGameServer flag is only the first-run default.
   const [serverMode, setServerMode] = useState<GameServerMode>(() => getGameServerMode());
+
+  // Latest committed snapshot/form, read synchronously by the live-sync handler
+  // (which runs outside render) to reconcile without stale-closure hazards.
+  const snapshotRef = useRef<ConfigResponse | null>(null);
+  snapshotRef.current = snapshot;
+  const formRef = useRef<AppConfig | null>(null);
+  formRef.current = form;
+
+  // Adopt a pushed config change. Per scope: if the local form has unsaved edits
+  // for that scope it is left intact (the user's edits win; saving overwrites);
+  // otherwise the scope silently takes the new value. The snapshot baseline is
+  // always advanced so dirty detection stays correct.
+  const applyRemote = useCallback((ev: ConfigEvent) => {
+    const remote = ev.config;
+    const oldSnap = snapshotRef.current;
+    // A full snapshot (the first/reconnect frame) is a ConfigResponse with no
+    // `type`; a delta is a ConfigChangedEvent. The `"type" in ev` guard narrows.
+    const fullSnapshot = "type" in ev ? null : ev;
+
+    // First frame (or any before the initial load resolved): treat as initial load.
+    if (!oldSnap) {
+      if (fullSnapshot) {
+        setSnapshot(fullSnapshot);
+        setForm(fullSnapshot.config);
+      }
+      return;
+    }
+
+    const scopes: ConfigScopeName[] =
+      "type" in ev
+        ? (Object.keys(ev.changedScopes ?? {}) as ConfigScopeName[])
+        : [
+            ...BASE_CONFIG_SCOPES,
+            ...(remote.android ? (["android"] as ConfigScopeName[]) : []),
+            ...(remote.desktop ? (["desktop"] as ConfigScopeName[]) : []),
+          ];
+
+    const prevForm = formRef.current;
+    if (prevForm) {
+      const draft = structuredClone(prevForm);
+      let touched = false;
+      for (const scope of scopes) {
+        const dirty =
+          JSON.stringify(scopeSlice(prevForm, scope)) !==
+          JSON.stringify(scopeSlice(oldSnap.config, scope));
+        if (!dirty) {
+          copyScope(draft, remote, scope);
+          touched = true;
+        }
+      }
+      if (touched) setForm(draft);
+    }
+
+    const nextSnap: ConfigResponse = { ...oldSnap, config: structuredClone(oldSnap.config) };
+    for (const scope of scopes) copyScope(nextSnap.config, remote, scope);
+    nextSnap.restartRequired = ev.restartRequired;
+    nextSnap.configPath = ev.configPath;
+    if (fullSnapshot) {
+      nextSnap.status = fullSnapshot.status;
+      nextSnap.cache = fullSnapshot.cache;
+    }
+    setSnapshot(nextSnap);
+  }, []);
+
+  useConfigSync(applyRemote);
 
   useEffect(() => {
     void refresh();
@@ -512,6 +609,9 @@ function App() {
                         )}
                         {IS_ANDROID_BUILD && tab === "android" && (
                           <AndroidTab form={form} onChange={updateConfig} />
+                        )}
+                        {IS_DESKTOP && tab === "desktop" && (
+                          <DesktopTab form={form} onChange={updateConfig} />
                         )}
                       </>
                     )}

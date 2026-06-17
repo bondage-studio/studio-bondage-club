@@ -12,6 +12,8 @@
 
 namespace sbc::server::rpc {
 
+class EventHub;
+
 // RpcError carries a machine-readable code alongside a human message. A method
 // handler throws it to return {"ok":false,"error":{code,message}}; the dispatcher
 // throws it for unknown methods. Any other std::exception maps to code "internal".
@@ -34,9 +36,17 @@ public:
         StreamProducer produce;
         std::chrono::milliseconds interval;
     };
+    // An event stream pushes on change (via EventHub) rather than on an interval.
+    // `initial` (optional) produces a one-off snapshot when a client subscribes, so
+    // a new subscriber starts with current state before receiving deltas.
+    struct EventStream {
+        EventHub* hub;
+        StreamProducer initial;
+    };
 
     void add(std::string name, Method fn);
     void add_stream(std::string name, StreamProducer fn, std::chrono::milliseconds interval);
+    void add_event_stream(std::string name, EventHub* hub, StreamProducer initial);
 
     // call dispatches a unary method. Throws RpcError("method_not_found") when the
     // method is unknown; otherwise propagates whatever the handler throws.
@@ -44,10 +54,12 @@ public:
                                                         const nlohmann::ordered_json& params) const;
 
     const Stream* find_stream(const std::string& method) const;
+    const EventStream* find_event_stream(const std::string& method) const;
 
 private:
     std::unordered_map<std::string, Method> methods_;
     std::unordered_map<std::string, Stream> streams_;
+    std::unordered_map<std::string, EventStream> event_streams_;
 };
 
 }  // namespace sbc::server::rpc

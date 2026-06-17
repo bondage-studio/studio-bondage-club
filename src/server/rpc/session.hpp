@@ -5,10 +5,14 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <nlohmann/json.hpp>
+
+#include "server/rpc/dispatcher.hpp"
+#include "server/rpc/event_hub.hpp"
 
 namespace sbc::server::rpc {
 
@@ -46,13 +50,17 @@ public:
 
 private:
     void start_subscription(std::int64_t id, const std::string& method);
+    void start_event_subscription(std::int64_t id, const RpcDispatcher::EventStream& stream);
     void stop_subscription(std::int64_t id);
 
     boost::asio::any_io_executor exec_;
     const RpcDispatcher& dispatcher_;
     Sender send_;
 
+    // Interval-driven subscriptions (timer per id) and event-driven ones (an
+    // EventHub registration per id). A given id lives in exactly one map.
     std::map<std::int64_t, std::shared_ptr<boost::asio::steady_timer>> subs_;
+    std::map<std::int64_t, std::pair<EventHub*, EventHub::SubId>> event_subs_;
     bool stopped_ = false;
 };
 

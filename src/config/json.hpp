@@ -22,6 +22,10 @@ void from_json(const nlohmann::ordered_json& j, GameServerConfig& g);
 void to_json(nlohmann::ordered_json& j, const AndroidConfig& a);
 void from_json(const nlohmann::ordered_json& j, AndroidConfig& a);
 #endif
+#if defined(SBC_DESKTOP)
+void to_json(nlohmann::ordered_json& j, const DesktopConfig& d);
+void from_json(const nlohmann::ordered_json& j, DesktopConfig& d);
+#endif
 void to_json(nlohmann::ordered_json& j, const Config& c);
 void from_json(const nlohmann::ordered_json& j, Config& c);
 

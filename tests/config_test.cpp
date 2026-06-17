@@ -71,6 +71,50 @@ SBC_TEST(load_sample_ignores_comment_fields) {
     CHECK(cfg.cache.rules[1].version_revalidate);
 }
 
+SBC_TEST(emit_policy_omits_match_legacy_wire_format) {
+    // StoreConfig: name always; dir omitted when empty; maxSizeBytes omitted when
+    // 0; defaultTTLSeconds omitted when null. A default store carries only name.
+    config::StoreConfig bare;
+    bare.name = "assets";
+    nlohmann::ordered_json jb = bare;
+    CHECK(jb.dump() == R"({"name":"assets"})");
+
+    config::StoreConfig full;
+    full.name = "mods";
+    full.dir = "/d";
+    full.max_size_bytes = 5;
+    full.default_ttl_seconds = 7;
+    nlohmann::ordered_json jf = full;
+    CHECK(jf.dump() == R"({"name":"mods","dir":"/d","maxSizeBytes":5,"defaultTTLSeconds":7})");
+
+    // CacheConfig: scalar fields always emitted; empty stores/rules omitted.
+    config::CacheConfig cc;
+    cc.dir = "/c";
+    nlohmann::ordered_json jc = cc;
+    CHECK(jc.dump() == R"({"dir":"/c","defaultTTLSeconds":0,"maxSizeBytes":0})");
+
+    // GameServerConfig: every field always emitted, in declared order.
+    nlohmann::ordered_json jg = config::GameServerConfig{};
+    CHECK(jg.contains("pingIntervalMs"));
+    CHECK(jg.size() == 23);
+    CHECK(jg.begin().key() == "pingIntervalMs");
+    CHECK((--jg.end()).key() == "ownershipNotesMaxLen");
+
+    // Config: top-level key order preserved.
+    nlohmann::ordered_json jcfg = config::default_config();
+    auto it = jcfg.begin();
+    CHECK((it++).key() == "server");
+    CHECK((it++).key() == "mode");
+    CHECK((it++).key() == "upstream");
+    CHECK((it++).key() == "gameServer");
+    CHECK((it++).key() == "socks5Proxy");
+    CHECK((it++).key() == "localGameServer");
+    CHECK((it++).key() == "gameServerStoragePath");
+    CHECK((it++).key() == "gameServerSettings");
+    CHECK((it++).key() == "cache");
+    CHECK((it++).key() == "package");
+}
+
 SBC_TEST(round_trip_preserves_fields) {
     auto cfg = load_lenient(kSampleConfig);
     nlohmann::ordered_json doc = cfg;

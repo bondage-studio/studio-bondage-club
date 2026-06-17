@@ -45,6 +45,10 @@ public:
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
 
+    // ApplyDesktopConfig resizes the live window to match a desktop-scope config
+    // change (the live half of the desktop sync). UI thread only.
+    void ApplyDesktopConfig(int width, int height);
+
     // CefDisplayHandler
     void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
 

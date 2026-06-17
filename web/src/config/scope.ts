@@ -35,6 +35,15 @@ export function scopeSlice(cfg: AppConfig, scope: ConfigScopeName): unknown {
       return cfg.package;
     case "android":
       return cfg.android ?? { hardwareAcceleration: true };
+    case "desktop":
+      return (
+        cfg.desktop ?? {
+          hardwareAcceleration: true,
+          windowWidth: 1280,
+          windowHeight: 800,
+          rememberWindowSize: true,
+        }
+      );
   }
 }
 
@@ -67,6 +76,9 @@ export function copyScope(dst: AppConfig, src: AppConfig, scope: ConfigScopeName
       break;
     case "android":
       dst.android = src.android ? structuredClone(src.android) : undefined;
+      break;
+    case "desktop":
+      dst.desktop = src.desktop ? structuredClone(src.desktop) : undefined;
       break;
   }
 }

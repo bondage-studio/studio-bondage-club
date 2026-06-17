@@ -9,10 +9,15 @@
 
 #include <spdlog/spdlog.h>
 
+#include "include/base/cef_callback.h"
 #include "include/cef_app.h"
+#include "include/cef_task.h"
 #include "include/cef_version.h"
+#include "include/wrapper/cef_closure_task.h"
 
+#include "config/config.hpp"
 #include "platform/paths.hpp"
+#include "server/config_listener.hpp"
 #include "server/embedded_server.hpp"
 
 #include "sbc_app.hpp"
@@ -79,6 +84,20 @@ int main(int argc, char* argv[]) {
 
     CefRefPtr<desktop::SbcClient> client(new desktop::SbcClient(server.get(), "http://" + address));
     app->SetBrowserConfig(client, "http://" + address + "/");
+
+    // Desktop config: seed the window size + GPU switch (read before CefInitialize),
+    // and react live to panel edits. The listener fires on an Asio worker, so hop
+    // to the CEF UI thread before touching the window. Restart-tier changes (GPU)
+    // are already persisted; they apply on the next launch.
+    const config::DesktopConfig& dc = server->desktop_config();
+    app->SetDesktopConfig(server.get(), dc.hardware_acceleration, dc.window_width, dc.window_height);
+    server->on_config_change(
+        server::ConfigPhase::Notify, "desktop",
+        [client](const config::Config& /*old_cfg*/, const config::Config& new_cfg) {
+            const int w = new_cfg.desktop.window_width;
+            const int h = new_cfg.desktop.window_height;
+            CefPostTask(TID_UI, base::BindOnce(&desktop::SbcClient::ApplyDesktopConfig, client, w, h));
+        });
 
     CefSettings settings;
     settings.no_sandbox = true;

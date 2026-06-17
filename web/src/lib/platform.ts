@@ -19,6 +19,14 @@ export function isAndroidRuntime(): boolean {
   return navigator.userAgent.includes("StudioBC-Android");
 }
 
+// isDesktopRuntime reports whether the bundle is running inside the desktop CEF
+// host (which tags its UA with "StudioBC-Desktop"). The desktop reuses the plain
+// web bundle, so the Desktop config tab is gated on this runtime check rather
+// than a build flag.
+export function isDesktopRuntime(): boolean {
+  return navigator.userAgent.includes("StudioBC-Desktop");
+}
+
 // isNativeRuntime reports whether the bundle is running inside one of our native
 // hosts (Android WebView or desktop CEF), as opposed to a plain browser. Native
 // hosts intercept cross-origin requests themselves and drive RPC over an injected

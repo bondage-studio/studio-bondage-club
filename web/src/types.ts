@@ -89,11 +89,23 @@ export interface AppConfig {
   package: PackageConfig;
   /** Android-app-only settings; only present in the Android build's config. */
   android?: AndroidSettings;
+  /** Desktop-app-only settings; only present in the desktop build's config. */
+  desktop?: DesktopSettings;
 }
 
 export interface AndroidSettings {
   /** Force GeckoView GPU acceleration (WebRender + accelerated 2D canvas). */
   hardwareAcceleration: boolean;
+}
+
+export interface DesktopSettings {
+  /** Chromium GPU compositing; read at startup, so a change needs a restart. */
+  hardwareAcceleration: boolean;
+  /** Window size; applied live to the open desktop window. */
+  windowWidth: number;
+  windowHeight: number;
+  /** Persist the OS window size back into config when the user resizes it. */
+  rememberWindowSize: boolean;
 }
 
 export type ConfigScopeName =
@@ -103,7 +115,8 @@ export type ConfigScopeName =
   | "gamesettings"
   | "mode"
   | "package"
-  | "android";
+  | "android"
+  | "desktop";
 
 export interface ScopeUpdateResponse {
   scope: ConfigScopeName;
@@ -147,6 +160,23 @@ export interface ConfigResponse {
   /** 0 = applied instantly, 1 = stores rebuilt, 2 = restart required for address change */
   updateTier?: 0 | 1 | 2;
 }
+
+// Pushed on the config.subscribe stream whenever a config change is applied
+// (from any client, the desktop host, or a direct edit). `changedScopes` maps
+// each changed scope to its update tier so the panel can reconcile just those
+// sections and surface the right tier message.
+export interface ConfigChangedEvent {
+  type: "configChanged";
+  config: AppConfig;
+  changedScopes: Partial<Record<ConfigScopeName, 0 | 1 | 2>>;
+  restartRequired: boolean;
+  updateTier: 0 | 1 | 2;
+  configPath: string;
+}
+
+// The first frame on config.subscribe is a full snapshot (a ConfigResponse, no
+// `type`); every later frame is a ConfigChangedEvent.
+export type ConfigEvent = ConfigResponse | ConfigChangedEvent;
 
 export interface StoreStat {
   name: string;

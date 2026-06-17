@@ -19,8 +19,25 @@ void SbcApp::SetBrowserConfig(CefRefPtr<SbcClient> client, const CefString& url)
     url_ = url;
 }
 
+void SbcApp::SetDesktopConfig(server::EmbeddedServer* server, bool hardware_acceleration,
+                             int window_width, int window_height) {
+    server_ = server;
+    hardware_acceleration_ = hardware_acceleration;
+    window_width_ = window_width;
+    window_height_ = window_height;
+}
+
 CefRefPtr<CefRenderProcessHandler> SbcApp::GetRenderProcessHandler() {
     return render_handler_;
+}
+
+void SbcApp::OnBeforeCommandLineProcessing(const CefString& process_type,
+                                           CefRefPtr<CefCommandLine> command_line) {
+    // Only the browser process (empty type) carries our config-derived switch;
+    // Chromium forwards GPU-disabling to the child processes it spawns.
+    if (!process_type.empty() || hardware_acceleration_) return;
+    command_line->AppendSwitch("disable-gpu");
+    command_line->AppendSwitch("disable-gpu-compositing");
 }
 
 void SbcApp::OnContextInitialized() {
@@ -32,7 +49,8 @@ void SbcApp::OnContextInitialized() {
     CefRefPtr<CefBrowserView> browser_view = CefBrowserView::CreateBrowserView(
         client_, url_, browser_settings, /*extra_info=*/nullptr,
         /*request_context=*/nullptr, /*delegate=*/nullptr);
-    CefWindow::CreateTopLevelWindow(new SbcWindowDelegate(browser_view));
+    CefWindow::CreateTopLevelWindow(
+        new SbcWindowDelegate(browser_view, window_width_, window_height_, server_));
 }
 
 }  // namespace sbc::desktop

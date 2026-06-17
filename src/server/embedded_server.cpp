@@ -64,6 +64,9 @@ std::string EmbeddedServer::start(const std::string& config_path, const std::str
 #if defined(__ANDROID__)
     hardware_acceleration_ = cfg.android.hardware_acceleration;
 #endif
+#if defined(SBC_DESKTOP)
+    desktop_ = cfg.desktop;
+#endif
 
     auto impl = std::make_unique<Impl>(std::move(store));
 
@@ -157,5 +160,27 @@ void EmbeddedServer::reset_rpc() {
 }
 
 #endif  // SBC_NATIVE_RPC
+
+#if defined(SBC_DESKTOP)
+
+namespace asio_desktop = boost::asio;
+
+void EmbeddedServer::on_config_change(
+    ConfigPhase phase, std::string scope_filter,
+    std::function<void(const config::Config&, const config::Config&)> cb) {
+    if (!impl_ || !impl_->app) return;
+    impl_->app->on_config_change(
+        phase, std::move(scope_filter),
+        [cb = std::move(cb)](const ConfigChange& ch) { cb(ch.old_cfg, ch.new_cfg); });
+}
+
+void EmbeddedServer::update_desktop_window_size(int width, int height) {
+    if (!impl_ || !impl_->app) return;
+    App* app = impl_->app.get();
+    asio_desktop::post(impl_->runtime.executor(),
+                       [app, width, height] { app->apply_desktop_window_size(width, height); });
+}
+
+#endif  // SBC_DESKTOP
 
 }  // namespace sbc::server

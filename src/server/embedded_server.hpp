@@ -5,6 +5,11 @@
 #include <memory>
 #include <string>
 
+#if defined(SBC_DESKTOP)
+#include "config/config.hpp"
+#include "server/config_listener.hpp"
+#endif
+
 namespace sbc::config {
 class Store;
 }
@@ -44,6 +49,25 @@ public:
     bool hardware_acceleration() const { return hardware_acceleration_; }
 #endif
 
+#if defined(SBC_DESKTOP)
+    // Desktop config snapshotted at start(): the CEF host reads these once when
+    // building CefSettings and the initial window.
+    const config::DesktopConfig& desktop_config() const { return desktop_; }
+
+    // on_config_change forwards to App::on_config_change so the desktop host can
+    // react to live edits in-process (no RPC hop). The callback runs on an Asio
+    // worker; CEF objects must be marshalled onto the UI thread (CefPostTask) by
+    // the caller.
+    void on_config_change(
+        ConfigPhase phase, std::string scope_filter,
+        std::function<void(const config::Config& old_cfg, const config::Config& new_cfg)> cb);
+
+    // update_desktop_window_size persists a window-size change originating from the
+    // native window (the reverse of a panel edit). Posts onto the Asio runtime and
+    // applies the "desktop" scope; the change then echoes to config.subscribe.
+    void update_desktop_window_size(int width, int height);
+#endif
+
 #if defined(SBC_NATIVE_RPC)
     // --- Native RPC bridge (native hosts: Android WebView, desktop CEF) ---
     // The native host drives the same RPC dispatcher the /rpc WebSocket uses,
@@ -71,6 +95,9 @@ private:
     std::unique_ptr<Impl> impl_;
 #if defined(__ANDROID__)
     bool hardware_acceleration_ = true;
+#endif
+#if defined(SBC_DESKTOP)
+    config::DesktopConfig desktop_;
 #endif
 };
 

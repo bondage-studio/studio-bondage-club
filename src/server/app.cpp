@@ -1,5 +1,6 @@
 #include "server/app.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <map>
@@ -16,6 +17,7 @@
 #include <boost/beast/http/verb.hpp>
 #include <boost/beast/websocket/stream.hpp>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include "common/error.hpp"
 #include "common/http_util.hpp"
@@ -27,6 +29,7 @@
 #include "net/io_runtime.hpp"
 #include "net/tls.hpp"
 #include "server/api_util.hpp"
+#include "server/config_scope_builder.hpp"
 #include "server/gameserver/game_socket_local.hpp"
 #include "server/homepage.hpp"
 #include "server/remote_proxy.hpp"
@@ -250,6 +253,7 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
+    register_listeners();
     register_rpc_methods();
 
     // The updater reads the live config (for socks5) via snapshot(); start it
@@ -444,6 +448,10 @@ void App::register_rpc_methods() {
     // Streaming: per-store cache stats every 2s (replaces the SSE /api/events feed).
     d.add_stream(
         "stats.subscribe", [this]() { return rpc_stats_event(); }, std::chrono::seconds(2));
+    // Event stream: pushed on every applied config change. The initial producer
+    // hands a new subscriber the current config (same shape as config.get).
+    d.add_event_stream(
+        "config.subscribe", config_hub_.get(), [this]() { return rpc_config_get(); });
 }
 
 asio::awaitable<ordered_json> App::rpc_userscript(const std::string& method,
@@ -713,91 +721,54 @@ asio::awaitable<ordered_json> App::rpc_config_reset() {
 }
 
 void App::register_scopes() {
-    using cfg_t = config::Config;
-    scopes_.push_back(ConfigScope{"connection",
-                                  [](const cfg_t& c) {
-                                      ordered_json j;
-                                      j["host"] = c.server.host;
-                                      j["port"] = c.server.port;
-                                      j["adminBasePath"] = c.server.admin_base_path;
-                                      j["upstream"] = c.upstream;
-                                      j["socks5Proxy"] = c.socks5_proxy;
-                                      j["gameServer"] = c.game_server;
-                                      return j;
-                                  },
-                                  [](cfg_t& c, const ordered_json& j) {
-                                      if (auto it = j.find("host"); it != j.end())
-                                          c.server.host = it->get<std::string>();
-                                      if (auto it = j.find("port"); it != j.end())
-                                          c.server.port = it->get<int>();
-                                      if (auto it = j.find("adminBasePath"); it != j.end())
-                                          c.server.admin_base_path = it->get<std::string>();
-                                      if (auto it = j.find("upstream"); it != j.end())
-                                          c.upstream = it->get<std::string>();
-                                      if (auto it = j.find("socks5Proxy"); it != j.end())
-                                          c.socks5_proxy = it->get<std::string>();
-                                      if (auto it = j.find("gameServer"); it != j.end())
-                                          c.game_server = it->get<std::string>();
-                                  },
-                                  [](const cfg_t& o, const cfg_t& n) {
-                                      return (o.server.host != n.server.host ||
-                                              o.server.port != n.server.port)
-                                                 ? UpdateTier::Restart
-                                                 : UpdateTier::Live;
-                                  }});
-    scopes_.push_back(
-        ConfigScope{"cache", [](const cfg_t& c) { return ordered_json(c.cache); },
-                    [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.cache); },
-                    [](const cfg_t& o, const cfg_t& n) {
-                        return (o.cache.dir != n.cache.dir ||
-                                store_topology_changed(o.cache.stores, n.cache.stores))
-                                   ? UpdateTier::Recreate
-                                   : UpdateTier::Live;
-                    }});
+    using config::Config;
+    using config::ServerConfig;
+    // connection: server host/port (a listener-address change needs a restart)
+    // plus the upstream/proxy/game-server URLs that the provider re-reads live.
+    scopes_.push_back(make_scope(
+        "connection",
+        {scalar_field_srv("host", &ServerConfig::host),
+         scalar_field_srv("port", &ServerConfig::port),
+         scalar_field_srv("adminBasePath", &ServerConfig::admin_base_path),
+         scalar_field("upstream", &Config::upstream),
+         scalar_field("socks5Proxy", &Config::socks5_proxy),
+         scalar_field("gameServer", &Config::game_server)},
+        [](const Config& o, const Config& n) {
+            return (o.server.host != n.server.host || o.server.port != n.server.port)
+                       ? UpdateTier::Restart
+                       : UpdateTier::Live;
+        }));
+    scopes_.push_back(make_struct_scope("cache", &Config::cache, [](const Config& o, const Config& n) {
+        return (o.cache.dir != n.cache.dir ||
+                store_topology_changed(o.cache.stores, n.cache.stores))
+                   ? UpdateTier::Recreate
+                   : UpdateTier::Live;
+    }));
     // gameserver: the local/remote routing toggle (read per request -> live) and
     // the embedded game DB storage path (hot-reloaded/migrated by apply_config,
     // independent of the cache provider, so it stays a Live tier).
-    scopes_.push_back(ConfigScope{"gameserver",
-                                  [](const cfg_t& c) {
-                                      return ordered_json{
-                                          {"localGameServer", c.local_game_server},
-                                          {"gameServerStoragePath", c.game_server_storage_path}};
-                                  },
-                                  [](cfg_t& c, const ordered_json& j) {
-                                      if (auto it = j.find("localGameServer"); it != j.end())
-                                          c.local_game_server = it->get<bool>();
-                                      if (auto it = j.find("gameServerStoragePath"); it != j.end())
-                                          c.game_server_storage_path = it->get<std::string>();
-                                  },
-                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
-    scopes_.push_back(ConfigScope{
-        "gamesettings", [](const cfg_t& c) { return ordered_json(c.game_server_settings); },
-        [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.game_server_settings); },
-        [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
-    scopes_.push_back(ConfigScope{"mode",
-                                  [](const cfg_t& c) { return ordered_json{{"mode", c.mode}}; },
-                                  [](cfg_t& c, const ordered_json& j) {
-                                      if (auto it = j.find("mode"); it != j.end())
-                                          c.mode = it->get<std::string>();
-                                  },
-                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Recreate; }});
-    scopes_.push_back(
-        ConfigScope{"package", [](const cfg_t& c) { return ordered_json(c.package); },
-                    [](cfg_t& c, const ordered_json& j) { config::from_json(j, c.package); },
-                    [](const cfg_t&, const cfg_t&) { return UpdateTier::Live; }});
+    scopes_.push_back(make_scope("gameserver",
+                                 {scalar_field("localGameServer", &Config::local_game_server),
+                                  scalar_field("gameServerStoragePath",
+                                               &Config::game_server_storage_path)},
+                                 tier_live));
+    scopes_.push_back(make_struct_scope("gamesettings", &Config::game_server_settings, tier_live));
+    scopes_.push_back(make_scope("mode", {scalar_field("mode", &Config::mode)}, tier_recreate));
+    scopes_.push_back(make_struct_scope("package", &Config::package, tier_live));
 #if defined(__ANDROID__)
     // android: GeckoView prefs (hardware acceleration) are read once at runtime
     // startup, so a change can only take effect after an app restart.
-    scopes_.push_back(ConfigScope{"android",
-                                  [](const cfg_t& c) {
-                                      return ordered_json{{"hardwareAcceleration",
-                                                           c.android.hardware_acceleration}};
-                                  },
-                                  [](cfg_t& c, const ordered_json& j) {
-                                      if (auto it = j.find("hardwareAcceleration"); it != j.end())
-                                          c.android.hardware_acceleration = it->get<bool>();
-                                  },
-                                  [](const cfg_t&, const cfg_t&) { return UpdateTier::Restart; }});
+    scopes_.push_back(make_struct_scope("android", &Config::android, tier_restart));
+#endif
+#if defined(SBC_DESKTOP)
+    // desktop: window size applies live; hardware acceleration is read once when
+    // building CefSettings, so changing it needs a restart.
+    scopes_.push_back(make_struct_scope("desktop", &Config::desktop, [](const Config& o,
+                                                                        const Config& n) {
+        return o.desktop.hardware_acceleration != n.desktop.hardware_acceleration
+                   ? UpdateTier::Restart
+                   : UpdateTier::Live;
+    }));
 #endif
 }
 
@@ -807,59 +778,57 @@ const ConfigScope* App::find_scope(const std::string& name) const {
     return nullptr;
 }
 
-std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cfg,
-                                                    const std::string& only_scope,
-                                                    bool migrate_cache) {
-    config::Config old_cfg = snapshot()->cfg;
-
+std::map<std::string, UpdateTier> App::diff_scopes(const config::Config& old_cfg,
+                                                   const config::Config& new_cfg,
+                                                   const std::string& only_scope) const {
     std::map<std::string, UpdateTier> changed;
-    bool needs_recreate = false;
-    bool needs_live = false;
-    bool game_settings_changed = false;
     for (const auto& sc : scopes_) {
         if (!only_scope.empty() && sc.name != only_scope) continue;
         if (!sc.changed(old_cfg, new_cfg)) continue;
-        UpdateTier t = sc.tier(old_cfg, new_cfg);
-        changed[sc.name] = t;
-        if (t == UpdateTier::Recreate) needs_recreate = true;
-        if (sc.name == "gamesettings") {
-            game_settings_changed = true;
-        } else if ((sc.name == "connection" || sc.name == "cache" || sc.name == "package") &&
-                   t == UpdateTier::Live) {
-            needs_live = true;
-        }
+        changed[sc.name] = sc.tier(old_cfg, new_cfg);
     }
-    if (changed.empty()) return changed;
+    return changed;
+}
 
-    // Provider work happens only when a provider-affecting scope changed; a pure
-    // gamesettings/gameserver/connection-address change never touches the provider
-    // (so its in-flight cache requests are undisturbed).
-    std::shared_ptr<host::Provider> provider = snapshot()->provider;
+namespace {
+
+bool any_tier(const std::map<std::string, UpdateTier>& changed, UpdateTier t) {
+    for (const auto& [name, tier] : changed)
+        if (tier == t) return true;
+    return false;
+}
+
+// The game DB directory moves either because the explicit gameServerStoragePath
+// changed, or because it defaults to <cache.dir>/gameserver and the cache dir
+// moved. When both old and new leave the path at its default, the game DB lives
+// inside the cache tree, so the cache-dir migrate physically relocates it for us.
+bool game_move_covered_by_cache(const ConfigChange& c) {
+    return c.old_cfg.game_server_storage_path.empty() &&
+           c.new_cfg.game_server_storage_path.empty() &&
+           c.old_cfg.cache.dir != c.new_cfg.cache.dir;
+}
+
+}  // namespace
+
+// swap_provider rebuilds the cache provider (or live-updates it) and atomically
+// swaps the new config + provider into state_. It is the one reaction that must
+// be transactional — on provider-construction failure it restores the old state
+// and re-attaches the game DB before rethrowing — so it stays inline rather than
+// becoming a listener.
+void App::swap_provider(const ConfigChange& ch) {
+    const config::Config& old_cfg = ch.old_cfg;
+    const config::Config& new_cfg = ch.new_cfg;
+    const bool needs_recreate = any_tier(ch.changed, UpdateTier::Recreate);
+    // A pure gamesettings/gameserver/connection-address change never touches the
+    // provider, so its in-flight cache requests stay undisturbed.
+    const bool needs_live = (ch.scope_changed("connection") || ch.scope_changed("cache") ||
+                             ch.scope_changed("package")) &&
+                            !needs_recreate;
     const bool cache_dir_changed = old_cfg.cache.dir != new_cfg.cache.dir;
 
-    // The embedded game DB directory may move either because the explicit
-    // gameServerStoragePath changed, or because it defaults to <cache.dir>/
-    // gameserver and the cache dir moved. This is independent of the cache
-    // provider, so it is hot-migrated here even when no provider rebuild happens.
-    const std::string old_game_dir = config::game_storage_dir(old_cfg);
-    const std::string new_game_dir = config::game_storage_dir(new_cfg);
-    const bool game_dir_changed = old_game_dir != new_game_dir;
-    // When both old and new leave the path at its default, the game DB lives
-    // inside the cache tree, so the cache-dir migrate physically relocates it for
-    // us — don't move it a second time.
-    const bool game_move_covered_by_cache = old_cfg.game_server_storage_path.empty() &&
-                                            new_cfg.game_server_storage_path.empty() &&
-                                            cache_dir_changed;
-
-    // Quiesce the game DB before any physical move of its data directory.
-    if (game_ && game_dir_changed) game_->detach_db();
-    // Dedicated relocation when the move isn't carried by the cache-tree migrate.
-    // Runs before the cache migrate so a nested default dir isn't moved twice.
-    if (migrate_cache && game_dir_changed && !game_move_covered_by_cache)
-        migrate_dir(old_game_dir, new_game_dir);
-
+    std::shared_ptr<host::Provider> provider = snapshot()->provider;
     if (needs_recreate) {
-        if (migrate_cache && cache_dir_changed) migrate_dir(old_cfg.cache.dir, new_cfg.cache.dir);
+        if (ch.migrate && cache_dir_changed) migrate_dir(old_cfg.cache.dir, new_cfg.cache.dir);
 
         std::shared_ptr<host::Provider> old_provider;
         {
@@ -867,9 +836,8 @@ std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cf
             old_provider = state_->provider;
         }
         if (old_provider) old_provider->close();
-        std::shared_ptr<host::Provider> new_provider;
         try {
-            new_provider = provider_for(new_cfg, ctx_);
+            provider = provider_for(new_cfg, ctx_);
         } catch (...) {
             try {
                 auto restored = provider_for(old_cfg, ctx_);
@@ -877,31 +845,136 @@ std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cf
                 state_ = std::make_shared<State>(State{old_cfg, restored});
             } catch (...) {
             }
-            // Re-attach the game DB so it isn't left detached. If we already moved
-            // its data, it now lives at the new path; otherwise it's untouched.
-            if (game_ && game_dir_changed)
-                game_->reopen(migrate_cache ? new_game_dir : old_game_dir);
+            // Re-attach the game DB so it isn't left detached (PostSwap won't run).
+            // If we already moved its data, it now lives at the new path.
+            const std::string old_game = config::game_storage_dir(old_cfg);
+            const std::string new_game = config::game_storage_dir(new_cfg);
+            if (game_ && old_game != new_game)
+                game_->reopen(ch.migrate ? new_game : old_game);
             throw;
         }
-        provider = new_provider;
     } else if (needs_live) {
         if (auto* lu = dynamic_cast<host::LiveUpdater*>(provider.get())) lu->live_update(new_cfg);
     }
 
-    // Reopen the game DB at its (possibly migrated) new location. With migrate off
-    // the new directory is a fresh, empty store.
-    if (game_ && game_dir_changed) game_->reopen(new_game_dir);
+    std::unique_lock lock(state_mu_);
+    state_ = std::make_shared<State>(State{new_cfg, provider});
+}
 
-    {
-        std::unique_lock lock(state_mu_);
-        state_ = std::make_shared<State>(State{new_cfg, provider});
-    }
+std::map<std::string, UpdateTier> App::apply_config(const config::Config& new_cfg,
+                                                    const std::string& only_scope,
+                                                    bool migrate_cache) {
+    config::Config old_cfg = snapshot()->cfg;
+    std::map<std::string, UpdateTier> changed = diff_scopes(old_cfg, new_cfg, only_scope);
+    if (changed.empty()) return changed;
 
-    // Game settings: pure COW swap, no provider involvement, zero teardown.
-    if (game_settings_changed && game_) game_->update_settings(new_cfg.game_server_settings);
+    ConfigChange ch{old_cfg, new_cfg, changed, migrate_cache};
 
+    // Quiesce + relocate before the provider transaction; swap state; re-open and
+    // hot-apply after; persist; then fan out to subscribers (exception-isolated).
+    fire_phase(ConfigPhase::PreSwap, ch);
+    swap_provider(ch);
+    fire_phase(ConfigPhase::PostSwap, ch);
     store_.save(new_cfg);
+    fire_phase_isolated(ConfigPhase::Notify, ch);
     return changed;
+}
+
+void App::register_listeners() {
+    // Game DB: detach (and relocate) before the provider transaction, reopen after
+    // the state swap. Fires on any change because the game dir can move via either
+    // gameServerStoragePath or a default rooted in a moved cache.dir.
+    add_config_listener(ConfigPhase::PreSwap, "", [this](const ConfigChange& c) {
+        if (!game_) return;
+        if (config::game_storage_dir(c.old_cfg) == config::game_storage_dir(c.new_cfg)) return;
+        game_->detach_db();
+        // Dedicated relocation when the move isn't carried by the cache-tree
+        // migrate; runs before the cache migrate so a nested default dir isn't
+        // moved twice.
+        if (c.migrate && !game_move_covered_by_cache(c))
+            migrate_dir(config::game_storage_dir(c.old_cfg), config::game_storage_dir(c.new_cfg));
+    });
+    add_config_listener(ConfigPhase::PostSwap, "", [this](const ConfigChange& c) {
+        if (!game_) return;
+        const std::string new_game = config::game_storage_dir(c.new_cfg);
+        // With migrate off the new directory is a fresh, empty store.
+        if (config::game_storage_dir(c.old_cfg) != new_game) game_->reopen(new_game);
+    });
+    // Game settings: pure COW swap, no provider involvement, zero teardown.
+    add_config_listener(ConfigPhase::PostSwap, "gamesettings", [this](const ConfigChange& c) {
+        if (game_) game_->update_settings(c.new_cfg.game_server_settings);
+    });
+    // Push every applied change to config.subscribe clients so open admin panels
+    // (and the desktop host) stay in sync regardless of which client made the edit.
+    add_config_listener(ConfigPhase::Notify, "", [this](const ConfigChange& c) {
+        config_hub_->publish(build_config_event(c));
+    });
+}
+
+ordered_json App::build_config_event(const ConfigChange& ch) {
+    auto state = snapshot();  // the just-swapped (new) state
+    ordered_json evt;
+    evt["type"] = "configChanged";
+    evt["config"] = state->cfg;
+    ordered_json scopes = ordered_json::object();
+    int max_tier = 0;
+    for (const auto& [name, tier] : ch.changed) {
+        scopes[name] = static_cast<int>(tier);
+        max_tier = std::max(max_tier, static_cast<int>(tier));
+    }
+    evt["changedScopes"] = std::move(scopes);
+    evt["restartRequired"] = state->cfg.server.address() != active_address_;
+    evt["updateTier"] = max_tier;
+    evt["configPath"] = store_.path().string();
+    return evt;
+}
+
+#if defined(SBC_DESKTOP)
+void App::apply_desktop_window_size(int width, int height) {
+    config::Config cfg = snapshot()->cfg;
+    if (!cfg.desktop.remember_window_size) return;
+    if (cfg.desktop.window_width == width && cfg.desktop.window_height == height) return;
+    cfg.desktop.window_width = width;
+    cfg.desktop.window_height = height;
+    try {
+        cfg = config::normalize(std::move(cfg));
+        cfg.validate();
+        apply_config(cfg, /*only_scope=*/"desktop", /*migrate_cache=*/false);
+    } catch (const std::exception& e) {
+        spdlog::warn("desktop window-size apply failed: {}", e.what());
+    }
+}
+#endif
+
+void App::add_config_listener(ConfigPhase phase, std::string scope_filter, ConfigListener fn) {
+    listeners_.push_back(ConfigListenerEntry{phase, std::move(scope_filter), std::move(fn)});
+}
+
+void App::on_config_change(ConfigPhase phase, std::string scope_filter, ConfigListener fn) {
+    add_config_listener(phase, std::move(scope_filter), std::move(fn));
+}
+
+void App::fire_phase(ConfigPhase phase, const ConfigChange& change) {
+    for (const auto& l : listeners_) {
+        if (l.phase != phase) continue;
+        if (!l.scope_filter.empty() && !change.scope_changed(l.scope_filter)) continue;
+        l.fn(change);
+    }
+}
+
+void App::fire_phase_isolated(ConfigPhase phase, const ConfigChange& change) {
+    for (const auto& l : listeners_) {
+        if (l.phase != phase) continue;
+        if (!l.scope_filter.empty() && !change.scope_changed(l.scope_filter)) continue;
+        try {
+            l.fn(change);
+        } catch (const std::exception& e) {
+            spdlog::warn("config listener (phase {}) failed: {}", static_cast<int>(phase),
+                         e.what());
+        } catch (...) {
+            spdlog::warn("config listener (phase {}) failed", static_cast<int>(phase));
+        }
+    }
 }
 
 asio::awaitable<cache::Stats> App::cache_stats() {

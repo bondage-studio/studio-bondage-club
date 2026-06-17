@@ -126,6 +126,14 @@ if(ANDROID OR SBC_BUILD_CEF_CLIENT)
   target_compile_definitions(sbc_core PUBLIC SBC_NATIVE_RPC)
 endif()
 
+# Desktop-only config (window geometry, GPU compositing) and the in-process
+# config-change forwarder the CEF host uses to react to edits. Compiled into
+# sbc_core only for the desktop build (a CLI built in the same configure shares
+# this sbc_core and carries the unused section, which is harmless).
+if(SBC_BUILD_CEF_CLIENT)
+  target_compile_definitions(sbc_core PUBLIC SBC_DESKTOP)
+endif()
+
 if(WIN32)
   target_compile_definitions(sbc_core PUBLIC _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()

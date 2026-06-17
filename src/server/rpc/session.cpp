@@ -8,6 +8,7 @@
 #include <boost/asio/use_awaitable.hpp>
 
 #include "server/rpc/dispatcher.hpp"
+#include "server/rpc/event_hub.hpp"
 
 namespace sbc::server::rpc {
 
@@ -59,6 +60,10 @@ void RpcSession::handle_frame(const json& msg) {
 }
 
 void RpcSession::start_subscription(std::int64_t id, const std::string& method) {
+    if (const RpcDispatcher::EventStream* es = dispatcher_.find_event_stream(method)) {
+        start_event_subscription(id, *es);
+        return;
+    }
     const RpcDispatcher::Stream* stream = dispatcher_.find_stream(method);
     if (stream == nullptr) {
         send_(json{
@@ -95,17 +100,56 @@ void RpcSession::start_subscription(std::int64_t id, const std::string& method) 
         asio::detached);
 }
 
+// An event subscription has no timer: it registers a push sink on the hub and
+// (if the stream provides one) emits a one-off snapshot so the new subscriber
+// starts with current state. The sink runs on this session's executor because
+// EventHub::publish posts onto it, so touching send_ is safe.
+void RpcSession::start_event_subscription(std::int64_t id, const RpcDispatcher::EventStream& es) {
+    auto self = shared_from_this();
+    EventHub* hub = es.hub;
+    EventHub::SubId sub = hub->subscribe(exec_, [self, id](json data) {
+        if (self->stopped_) return;
+        self->send_(json{{"t", "event"}, {"id", id}, {"data", std::move(data)}}.dump());
+    });
+    event_subs_[id] = {hub, sub};
+
+    if (es.initial) {
+        auto produce = es.initial;
+        asio::co_spawn(
+            exec_,
+            [self, id, produce]() -> asio::awaitable<void> {
+                try {
+                    json data = co_await produce();
+                    if (!self->stopped_ && self->event_subs_.count(id))
+                        self->send_(
+                            json{{"t", "event"}, {"id", id}, {"data", std::move(data)}}.dump());
+                } catch (...) {
+                    // Snapshot failure: the client still receives subsequent change
+                    // events, so drop it silently rather than tear down the stream.
+                }
+                co_return;
+            },
+            asio::detached);
+    }
+}
+
 void RpcSession::stop_subscription(std::int64_t id) {
-    auto it = subs_.find(id);
-    if (it == subs_.end()) return;
-    it->second->cancel();
-    subs_.erase(it);
+    if (auto it = subs_.find(id); it != subs_.end()) {
+        it->second->cancel();
+        subs_.erase(it);
+    }
+    if (auto it = event_subs_.find(id); it != event_subs_.end()) {
+        it->second.first->unsubscribe(it->second.second);
+        event_subs_.erase(it);
+    }
 }
 
 void RpcSession::cancel_all() {
     stopped_ = true;
     for (auto& [id, timer] : subs_) timer->cancel();
     subs_.clear();
+    for (auto& [id, hub_sub] : event_subs_) hub_sub.first->unsubscribe(hub_sub.second);
+    event_subs_.clear();
 }
 
 }  // namespace sbc::server::rpc

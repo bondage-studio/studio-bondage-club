@@ -15,11 +15,13 @@
 #include "config/store.hpp"
 #include "host/provider.hpp"
 #include "host/provider_context.hpp"
+#include "server/config_listener.hpp"
 #include "server/config_scope.hpp"
 #include "server/gameserver/game/game_app.hpp"
 #include "server/http_types.hpp"
 #include "server/rpc/auth.hpp"
 #include "server/rpc/dispatcher.hpp"
+#include "server/rpc/event_hub.hpp"
 #include "server/rpc/session.hpp"
 #include "server/static_assets.hpp"
 #include "server/userscript_store.hpp"
@@ -53,6 +55,21 @@ public:
         return std::make_shared<rpc::RpcSession>(std::move(exec), rpc_dispatcher_, std::move(send));
     }
 
+    // on_config_change registers a reaction to live config edits, fired by
+    // apply_config in the given phase (optionally only when a named scope changed).
+    // In-process hosts (e.g. the desktop CEF layer) use this to react without an
+    // RPC hop; the callback runs on the apply's executor.
+    void on_config_change(ConfigPhase phase, std::string scope_filter, ConfigListener fn);
+
+#if defined(SBC_DESKTOP)
+    // apply_desktop_window_size persists a window-size change from the native
+    // window (reverse of a panel edit): merges into the live config, validates,
+    // applies the "desktop" scope and echoes to config.subscribe. No-op when
+    // unchanged or when rememberWindowSize is off. Caller serialises via the
+    // io executor.
+    void apply_desktop_window_size(int width, int height);
+#endif
+
 private:
     struct State {
         config::Config cfg;
@@ -85,6 +102,11 @@ private:
     // both the cache.stats unary method and the stats.subscribe stream.
     boost::asio::awaitable<nlohmann::ordered_json> rpc_stats_event();
 
+    // build_config_event is the payload pushed to config.subscribe clients on every
+    // change: the full (post-swap) config plus the changed scopes and their tiers.
+    // Synchronous (no cache-stats round-trip) so it can run in the Notify listener.
+    nlohmann::ordered_json build_config_event(const ConfigChange& change);
+
     // Userscript manager methods (dedicated LevelDB store, not a config scope). All
     // store calls bridge onto the blocking pool via net::run_blocking.
     boost::asio::awaitable<nlohmann::ordered_json> rpc_userscript(
@@ -115,11 +137,29 @@ private:
                                                    const std::string& only_scope,
                                                    bool migrate_cache);
 
+    // Config-listener registry. register_listeners() wires the built-in reactions
+    // once (in the ctor); fire_phase runs matching listeners for a phase in order.
+    // _isolated wraps each in try/catch so one failure can't abort the apply.
+    void register_listeners();
+    void add_config_listener(ConfigPhase phase, std::string scope_filter, ConfigListener fn);
+    void fire_phase(ConfigPhase phase, const ConfigChange& change);
+    void fire_phase_isolated(ConfigPhase phase, const ConfigChange& change);
+
+    // diff_scopes returns the changed scopes + their tiers (restricted to
+    // only_scope when set). swap_provider runs the provider recreate/live_update
+    // and the atomic state_ swap, restoring old state (and re-attaching the game
+    // DB) on failure — the one genuinely transactional reaction, kept inline.
+    std::map<std::string, UpdateTier> diff_scopes(const config::Config& old_cfg,
+                                                  const config::Config& new_cfg,
+                                                  const std::string& only_scope) const;
+    void swap_provider(const ConfigChange& change);
+
     config::Store& store_;
     host::ProviderContext ctx_;
     std::string active_address_;
     std::shared_ptr<AssetSource> assets_;
     std::vector<ConfigScope> scopes_;
+    std::vector<ConfigListenerEntry> listeners_;
 
     // game_ is the embedded local game server. It is a direct member (outside
     // State) so toggling localGameServer at runtime never tears it down.
@@ -135,6 +175,9 @@ private:
     // independent of the active config/provider.
     rpc::RpcAuth rpc_auth_;
     rpc::RpcDispatcher rpc_dispatcher_;
+    // Push hub backing the config.subscribe stream; the Notify listener publishes
+    // each applied change to it. Process-lifetime, independent of config/provider.
+    std::shared_ptr<rpc::EventHub> config_hub_ = std::make_shared<rpc::EventHub>();
 
     mutable std::shared_mutex state_mu_;
     std::shared_ptr<const State> state_;

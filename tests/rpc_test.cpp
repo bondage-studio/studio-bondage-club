@@ -8,6 +8,7 @@
 
 #include "server/rpc/auth.hpp"
 #include "server/rpc/dispatcher.hpp"
+#include "server/rpc/event_hub.hpp"
 #include "test_framework.hpp"
 
 using namespace sbc::server::rpc;
@@ -101,4 +102,38 @@ SBC_TEST(rpc_dispatcher_registers_streams) {
     CHECK(d.find_stream("ticks") != nullptr);
     CHECK(d.find_stream("ticks")->interval == std::chrono::seconds(2));
     CHECK(d.find_stream("missing") == nullptr);
+}
+
+SBC_TEST(rpc_dispatcher_registers_event_streams) {
+    EventHub hub;
+    RpcDispatcher d;
+    d.add_event_stream("config.subscribe", &hub,
+                       []() -> asio::awaitable<ordered_json> { co_return ordered_json{{"k", 1}}; });
+    CHECK(d.find_event_stream("config.subscribe") != nullptr);
+    CHECK(d.find_event_stream("config.subscribe")->hub == &hub);
+    CHECK(d.find_event_stream("missing") == nullptr);
+    // Event streams are distinct from interval streams.
+    CHECK(d.find_stream("config.subscribe") == nullptr);
+}
+
+SBC_TEST(event_hub_publishes_to_subscribers_on_their_executor) {
+    EventHub hub;
+    asio::io_context io;
+    int got = 0;
+    ordered_json last;
+    auto id = hub.subscribe(io.get_executor(), [&](ordered_json data) {
+        ++got;
+        last = std::move(data);
+    });
+    hub.publish(ordered_json{{"v", 42}});
+    io.run();  // the sink runs only when its executor is pumped
+    CHECK(got == 1);
+    CHECK(last.value("v", 0) == 42);
+
+    // After unsubscribe, no further delivery.
+    io.restart();
+    hub.unsubscribe(id);
+    hub.publish(ordered_json{{"v", 7}});
+    io.run();
+    CHECK(got == 1);
 }

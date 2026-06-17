@@ -51,8 +51,10 @@ SET_EXECUTABLE_TARGET_PROPERTIES(studio-bondage-club-desktop)
 add_dependencies(studio-bondage-club-desktop libcef_dll_wrapper)
 
 # sbc_core (Boost.Asio coroutines) and our own try/catch around server startup
-# need exceptions + RTTI; re-enable them in case the CEF flags disabled them.
-target_compile_options(studio-bondage-club-desktop PRIVATE -fexceptions -frtti)
+# need exceptions + RTTI; re-enable them in case the CEF flags disabled them. The
+# CEF helper also injects -std=c++17, but the desktop sources now include sbc_core
+# headers (config.hpp uses std::span, C++20); append -std=c++20 last so it wins.
+target_compile_options(studio-bondage-club-desktop PRIVATE -fexceptions -frtti -std=c++20)
 
 # Optional libdbus-1: the preferred notification backend talks to the daemon
 # directly over D-Bus (desktop/src/dbus_notifier.cpp, gated on SBC_HAVE_DBUS).
