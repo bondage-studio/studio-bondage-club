@@ -54,6 +54,21 @@ add_dependencies(studio-bondage-club-desktop libcef_dll_wrapper)
 # need exceptions + RTTI; re-enable them in case the CEF flags disabled them.
 target_compile_options(studio-bondage-club-desktop PRIVATE -fexceptions -frtti)
 
+# Optional libdbus-1: the preferred notification backend talks to the daemon
+# directly over D-Bus (desktop/src/dbus_notifier.cpp, gated on SBC_HAVE_DBUS).
+# When absent the build still succeeds and falls back to the notify-send CLI.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(DBUS IMPORTED_TARGET dbus-1)
+endif()
+if(TARGET PkgConfig::DBUS)
+  target_compile_definitions(studio-bondage-club-desktop PRIVATE SBC_HAVE_DBUS)
+  target_link_libraries(studio-bondage-club-desktop PRIVATE PkgConfig::DBUS)
+  message(STATUS "Desktop notifications: libdbus-1 backend (notify-send fallback)")
+else()
+  message(STATUS "Desktop notifications: notify-send backend (libdbus-1 not found)")
+endif()
+
 target_include_directories(studio-bondage-club-desktop PRIVATE
   "${CEF_ROOT}"
   "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -61,6 +76,7 @@ target_link_libraries(studio-bondage-club-desktop PRIVATE
   sbc_core
   libcef_lib
   libcef_dll_wrapper
+  Threads::Threads
   ${CEF_STANDARD_LIBS})
 
 # Find libcef.so beside the executable at runtime.

@@ -1,8 +1,11 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "include/cef_client.h"
+
+#include "notifier.hpp"
 
 namespace sbc::server {
 class EmbeddedServer;
@@ -65,6 +68,7 @@ private:
 
     sbc::server::EmbeddedServer* server_;
     std::string local_origin_;
+    std::unique_ptr<Notifier> notifier_;
     CefRefPtr<CefBrowser> browser_;
     int browser_count_ = 0;
 

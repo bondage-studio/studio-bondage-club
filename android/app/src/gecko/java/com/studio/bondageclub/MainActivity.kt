@@ -10,6 +10,7 @@ import android.view.WindowInsetsController
 import android.widget.Toast
 import java.io.File
 import org.json.JSONObject
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
@@ -42,6 +43,36 @@ class MainActivity : Activity() {
         // and do the cross-origin proxying, so the tag must stay absent.
         session = GeckoSession()
         session.open(runtime)
+
+        // GeckoView renders no UI for HTML prompts on its own; without this the
+        // game's <select> dropdowns can't be opened. See GeckoViewPrompt.
+        session.promptDelegate = GeckoViewPrompt(this)
+
+        // Auto-grant the Notification permission so the game can raise Web
+        // Notifications (mirrored to Android notifications by GeckoWebNotification,
+        // wired on the runtime below). This is a local single-purpose app, so the
+        // user installing it is consent enough; other permission types fall
+        // through to GeckoView's default handling (returning null).
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission,
+            ): GeckoResult<Int>? {
+                return if (perm.permission ==
+                    GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
+                ) {
+                    GeckoResult.fromValue(
+                        GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW
+                    )
+                } else {
+                    null
+                }
+            }
+        }
+
+        // Android 13+ gates posting notifications behind a runtime grant; request
+        // it once so GeckoWebNotification's posts actually surface.
+        requestPostNotificationsIfNeeded()
 
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onCanGoBack(session: GeckoSession, value: Boolean) {
@@ -110,6 +141,16 @@ class MainActivity : Activity() {
                 },
                 { loadPage() },
             )
+    }
+
+    private fun requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 0)
+            }
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -200,7 +241,14 @@ class MainActivity : Activity() {
                     }
 
                     GeckoRuntime.create(activity.applicationContext, builder.build())
-                        .also { runtime = it }
+                        .also {
+                            // Mirror the page's Web Notifications into Android
+                            // notifications. Set on the per-process runtime, so it
+                            // survives activity re-creation alongside the runtime.
+                            it.webNotificationDelegate =
+                               GeckoWebNotification(activity.applicationContext)
+                            runtime = it
+                        }
                 }
             }
         }

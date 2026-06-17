@@ -11,13 +11,22 @@
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 
+#include "notifier.hpp"
 #include "sbc_ipc.hpp"
 #include "server/embedded_server.hpp"
 
 namespace sbc::desktop {
 
+namespace {
+// Shown as the notification's application name (e.g. in GNOME's notification
+// tray). Matches the window title the page sets via OnTitleChange.
+constexpr char kAppName[] = "Studio Bondage Club";
+}  // namespace
+
 SbcClient::SbcClient(sbc::server::EmbeddedServer* server, std::string local_origin)
-    : server_(server), local_origin_(std::move(local_origin)) {}
+    : server_(server),
+      local_origin_(std::move(local_origin)),
+      notifier_(CreateDefaultNotifier(kAppName)) {}
 
 SbcClient::~SbcClient() = default;
 
@@ -65,13 +74,24 @@ void SbcClient::SendFrameToRenderer(std::string frame) {
 bool SbcClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
                                          CefRefPtr<CefFrame> /*frame*/, CefProcessId source_process,
                                          CefRefPtr<CefProcessMessage> message) {
-    if (source_process != PID_RENDERER || message->GetName() != kRpcToBrowser) {
+    if (source_process != PID_RENDERER) {
         return false;
     }
-    // The frame carries its own capability token; deliver_rpc_frame verifies it
-    // and is safe to call from any thread.
-    server_->deliver_rpc_frame(message->GetArgumentList()->GetString(0).ToString());
-    return true;
+    const std::string name = message->GetName();
+    if (name == kRpcToBrowser) {
+        // The frame carries its own capability token; deliver_rpc_frame verifies
+        // it and is safe to call from any thread.
+        server_->deliver_rpc_frame(message->GetArgumentList()->GetString(0).ToString());
+        return true;
+    }
+    if (name == kNotifyShow) {
+        // From the window.Notification shim: [0] title, [1] body, [2] tag.
+        CefRefPtr<CefListValue> args = message->GetArgumentList();
+        notifier_->Show(args->GetString(0).ToString(), args->GetString(1).ToString(),
+                        args->GetString(2).ToString());
+        return true;
+    }
+    return false;
 }
 
 void SbcClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) {

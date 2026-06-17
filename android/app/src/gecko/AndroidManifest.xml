@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- gecko-flavor overlay: merged into src/main/AndroidManifest.xml. Android 13+
+     requires this runtime permission to post notifications; the gecko flavor
+     mirrors the game's Web Notifications into Android ones (GeckoWebNotification).
+     The system flavor has no such path, so the permission stays flavor-scoped. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+</manifest>

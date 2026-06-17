@@ -271,9 +271,13 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       # ninja generator, system OpenSSL for sbc_core, libx11-dev for the lone
-      # entry in CEF_STANDARD_LIBS the client links against.
+      # entry in CEF_STANDARD_LIBS the client links against, and libdbus-1-dev
+      # (+ pkg-config to detect it) for the preferred D-Bus notification backend.
+      # Without libdbus-1-dev the build still succeeds but silently falls back to
+      # the notify-send backend; installing it keeps remote builds in sync with
+      # local ones (the dbus_notifier path compiled in).
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libssl-dev libx11-dev
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libssl-dev libx11-dev libdbus-1-dev pkg-config
 
       # The server embeds web/dist (SBC_EMBED_WEB), so it must exist before the
       # C++ build runs. Build it here, like the Android job does.
