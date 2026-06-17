@@ -14,6 +14,17 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/DownloadCEF.cmake")
 #    cef_variables.cmake probes C compiler flags, so the C language must be on
 #    (the top-level project enables CXX only).
 enable_language(C)
+
+if(NOT DEFINED PROJECT_ARCH)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(PROJECT_ARCH "arm64")
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(PROJECT_ARCH "x86_64")
+  else()
+    set(PROJECT_ARCH "x86")
+  endif()
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CEF_ROOT}/cmake")
 find_package(CEF REQUIRED)
 
