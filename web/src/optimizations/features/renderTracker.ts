@@ -13,13 +13,17 @@ export interface RenderStat {
   lastRebuildAt: number;
 }
 
-const stats = new WeakMap<Character, RenderStat>();
+declare global {
+  interface Character {
+    __sodiumRenderStat?: RenderStat;
+  }
+}
 
 function ensure(C: Character): RenderStat {
-  let s = stats.get(C);
+  let s = C.__sodiumRenderStat;
   if (!s) {
     s = { rebuilds: 0, skips: 0, totalMs: 0, lastMs: 0, lastRebuildAt: 0 };
-    stats.set(C, s);
+    C.__sodiumRenderStat = s;
   }
   return s;
 }
@@ -35,7 +39,7 @@ export function flagSkip(): void {
 
 /** Current telemetry for a character (used by lazyCanvas for its cost-based backoff). */
 export function getRenderStat(C: Character): RenderStat | undefined {
-  return stats.get(C);
+  return C.__sodiumRenderStat;
 }
 
 export function installRenderTracker(mod: ModSDKModAPI): void {
@@ -75,7 +79,7 @@ export function getTrackedCharacters(): TrackedCharacter[] {
   for (const C of DrawLastCharacters) {
     if (!C || seen.has(C)) continue;
     seen.add(C);
-    const stat = stats.get(C);
+    const stat = C.__sodiumRenderStat;
     if (stat) out.push({ C, stat });
   }
   return out;
