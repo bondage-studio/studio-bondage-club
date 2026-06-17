@@ -8,6 +8,7 @@ const ALL_OFF: OptimizationFeatures = {
   idleFpsThrottle: false,
   skipValidation: false,
   chatLogTrim: false,
+  tintCache: false,
 };
 
 const INPUT_EVENTS = ["mousedown", "keydown", "mousemove", "touchstart", "wheel"] as const;

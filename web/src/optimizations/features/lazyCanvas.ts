@@ -8,6 +8,7 @@ interface LazyState {
   nextStaleDraw: number;
   nextForceDraw: number;
   lastHash: number | null;
+  loadHash: number | null;
   isDirty: boolean;
   dirtyAt: number;
 }
@@ -26,6 +27,23 @@ let forceBuildCanvas = false;
 let loggedBuild = false;
 
 const FORCE_DRAW_MS = 5000;
+
+function ensureState(C: Character, now: number): LazyState {
+  let state = lazyStates.get(C);
+  if (!state) {
+    state = {
+      createdAt: now,
+      nextStaleDraw: 0,
+      nextForceDraw: 0,
+      lastHash: null,
+      loadHash: null,
+      isDirty: false,
+      dirtyAt: 0,
+    };
+    lazyStates.set(C, state);
+  }
+  return state;
+}
 
 function fold(s: string, h: number): number {
   h = (h * 31 + s.length) | 0;
@@ -85,18 +103,7 @@ export const lazyCanvas: Optimization = {
       if (CurrentScreen !== "ChatRoom" || CurrentCharacter) return next(args);
 
       const now = Date.now();
-      let state = lazyStates.get(C);
-      if (!state) {
-        state = {
-          createdAt: now,
-          nextStaleDraw: 0,
-          nextForceDraw: 0,
-          lastHash: null,
-          isDirty: false,
-          dirtyAt: 0,
-        };
-        lazyStates.set(C, state);
-      }
+      const state = ensureState(C, now);
 
       // Called outside the chat-room draw loop: defer to DrawCharacter.
       if (!isDrawing) {
@@ -145,6 +152,42 @@ export const lazyCanvas: Optimization = {
       return res;
     });
 
+    // Gate the expensive prep inside CharacterLoadCanvas. Animated assets retrigger
+    // CharacterRefresh -> CharacterLoadCanvas on their refresh rate (Drawing.js), and
+    // that prep — the CharacterAppearanceStringify+parse deep copy, SortLayers and
+    // BuildMasks — runs every time even when the result is identical; the BuildCanvas
+    // gate above only skips the final paint, not this. When the appearance+pose hash
+    // matches the last full load, the cached AppearanceLayers/Masks are still valid,
+    // so we skip the prep and route straight to CharacterAppearanceBuildCanvas, which
+    // is itself gated and still carries the heartbeat that flushes image reloads.
+    mod.hookFunction("CharacterLoadCanvas", 10, (args, next) => {
+      if (!flags.lazyCanvas) return next(args);
+      const C = args[0] as Character | undefined;
+      if (!C || !C.CharacterID) return next(args);
+      if (forceBuildCanvas) return next(args);
+      if (CurrentScreen !== "ChatRoom" || CurrentCharacter) return next(args);
+
+      const now = Date.now();
+      const state = ensureState(C, now);
+      const hash = appearanceHash(C);
+
+      // First load, or a genuine appearance/pose change: run the full prep, then
+      // remember the hash it produced.
+      if (state.loadHash === null || state.loadHash !== hash) {
+        const res = next(args);
+        state.loadHash = hash;
+        return res;
+      }
+
+      // Unchanged since the last full load: reuse the cached layers/masks and only
+      // repaint. BuildCanvas decides whether the paint actually runs (and its 5s
+      // heartbeat still picks up late image loads). Clearing MustDraw mirrors the
+      // tail of the real CharacterLoadCanvas.
+      CharacterAppearanceBuildCanvas(C);
+      C.MustDraw = false;
+      return undefined;
+    });
+
     // Flush a character whose rebuild was deferred while it was off the draw loop.
     mod.hookFunction("DrawCharacter", 10, (args, next) => {
       if (flags.lazyCanvas) {
@@ -166,10 +209,6 @@ export const lazyCanvas: Optimization = {
     });
   },
   onDisabled() {
-    // Hand control back to BC: flag every loaded character dirty so its next
-    // DrawCharacter rebuilds the canvas we may have left stale (MustDraw is exactly
-    // the engine's own "needs a rebuild" signal). Our WeakMap state is dropped with
-    // the characters; no manual teardown needed.
     if (typeof Character !== "undefined") {
       for (const C of Character) C.MustDraw = true;
     }

@@ -6,11 +6,18 @@ import { installFrameRecorder } from "./features/frameRecorder";
 import { lazyCanvas } from "./features/lazyCanvas";
 import { installRenderTracker } from "./features/renderTracker";
 import { skipValidation } from "./features/skipValidation";
+import { tintCache } from "./features/tintCache";
 import { dbg } from "./debug";
 import { flags } from "./flags";
 import type { Optimization } from "./optimization";
 
-const OPTIMIZATIONS: Optimization[] = [lazyCanvas, idleFpsThrottle, skipValidation, chatLogTrim];
+const OPTIMIZATIONS: Optimization[] = [
+  lazyCanvas,
+  idleFpsThrottle,
+  skipValidation,
+  chatLogTrim,
+  tintCache,
+];
 
 let installed = false;
 

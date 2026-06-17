@@ -33,6 +33,11 @@ const FEATURES: { key: OptimizationFeatureKey; label: string; hint: string }[] =
   },
   { key: "skipValidation", label: "Skip validation", hint: "Bypass appearance sanitization" },
   { key: "chatLogTrim", label: "Trim chat log", hint: "Cap the in-DOM chat log length" },
+  {
+    key: "tintCache",
+    label: "Tint cache",
+    hint: "Cache the per-character blind/tint overlay",
+  },
 ];
 
 const TRIGGERS: { value: OptimizationTrigger; label: string }[] = [
@@ -47,6 +52,7 @@ function emptyFeatures(): OptimizationFeatures {
     idleFpsThrottle: false,
     skipValidation: false,
     chatLogTrim: false,
+    tintCache: false,
   };
 }
 

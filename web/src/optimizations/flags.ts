@@ -8,4 +8,5 @@ export const flags: OptimizationFeatures = {
   idleFpsThrottle: false,
   skipValidation: false,
   chatLogTrim: false,
+  tintCache: false,
 };
