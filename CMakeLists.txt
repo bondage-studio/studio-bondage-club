@@ -81,6 +81,11 @@ find_package(leveldb CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+# Content-Encoding decoders for upstream fetches: gzip/deflate via zlib, brotli
+# via the vcpkg "unofficial-brotli" config (decode-only — brotlidec + the shared
+# brotlicommon; the encoder is not linked since we cache/serve identity bodies).
+find_package(ZLIB REQUIRED)
+find_package(unofficial-brotli CONFIG REQUIRED)
 
 file(GLOB_RECURSE SBC_CORE_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
@@ -106,7 +111,10 @@ target_link_libraries(sbc_core PUBLIC
   leveldb::leveldb
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  Threads::Threads)
+  Threads::Threads
+  ZLIB::ZLIB
+  unofficial::brotli::brotlidec
+  unofficial::brotli::brotlicommon)
 
 if(WIN32)
   # Schannel (Secur32/Crypt32) backs wintls; bcrypt/CNG backs SHA-256 + PBKDF2.

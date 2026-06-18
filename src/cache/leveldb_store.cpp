@@ -180,14 +180,10 @@ std::optional<Metadata> LevelDbStore::get(const std::string& key) {
     if (s.IsNotFound()) return std::nullopt;
     if (!s.ok()) throw Error("leveldb get meta " + key + ": " + s.ToString());
 
-    Metadata meta = metadata_from_json(val);
-
-    // Verify the body exists without copying it (cheap key-only seek).
-    std::unique_ptr<leveldb::Iterator> it(db_->NewIterator(leveldb::ReadOptions()));
-    std::string bk = body_key(key);
-    it->Seek(bk);
-    if (!it->Valid() || it->key().ToString() != bk) return std::nullopt;
-    return meta;
+    // Body and metadata are written in one atomic batch (store_body) and deleted
+    // together (enforce_max_size/clear), so a present "m/" implies a present "b/";
+    // no separate existence probe is needed.
+    return metadata_from_json(val);
 }
 
 std::string LevelDbStore::open_body(const std::string& key) {
@@ -208,22 +204,37 @@ std::unique_ptr<Writer> LevelDbStore::new_writer(const std::string& key) {
     return std::make_unique<LevelDbWriter>(this, key, dir / name);
 }
 
-Metadata LevelDbStore::commit_temp(const fs::path& temp_path, Metadata meta) {
-    std::string body = read_whole_file(temp_path);
-    std::error_code ec;
-    fs::remove(temp_path, ec);
-
+Metadata LevelDbStore::store_body(std::string body, Metadata meta) {
     meta.body_sha256 = crypto::sha256_hex(body);
     meta.body_size = static_cast<std::int64_t>(body.size());
 
     leveldb::WriteBatch batch;
     batch.Put(body_key(meta.key), body);
     batch.Put(meta_key(meta.key), metadata_to_json(meta));
+    // sync=false: a cache entry lost on crash just triggers a re-fetch; durability
+    // is not worth an fsync per write. LevelDB still persists via its WAL.
     leveldb::WriteOptions wo;
-    wo.sync = true;
     leveldb::Status s = db_->Write(wo, &batch);
-    if (!s.ok()) throw Error("leveldb commit " + meta.key + ": " + s.ToString());
+    if (!s.ok()) throw Error("leveldb store " + meta.key + ": " + s.ToString());
+
+    // Keep the running byte total in sync (only once seeded; otherwise the next
+    // enforce_max_size() scan establishes it).
+    if (total_bytes_.load(std::memory_order_relaxed) >= 0) {
+        total_bytes_.fetch_add(meta.body_size, std::memory_order_relaxed);
+    }
     return meta;
+}
+
+Metadata LevelDbStore::put(const std::string& key, std::string body, Metadata meta) {
+    meta.key = key;
+    return store_body(std::move(body), std::move(meta));
+}
+
+Metadata LevelDbStore::commit_temp(const fs::path& temp_path, Metadata meta) {
+    std::string body = read_whole_file(temp_path);
+    std::error_code ec;
+    fs::remove(temp_path, ec);
+    return store_body(std::move(body), std::move(meta));
 }
 
 std::optional<Metadata> LevelDbStore::update_metadata(const std::string& key,
@@ -235,8 +246,7 @@ std::optional<Metadata> LevelDbStore::update_metadata(const std::string& key,
     if (!s.ok()) throw Error("leveldb get meta for update " + key + ": " + s.ToString());
 
     Metadata meta = fn(metadata_from_json(val));
-    leveldb::WriteOptions wo;
-    wo.sync = true;
+    leveldb::WriteOptions wo;  // sync=false: metadata updates need no fsync
     s = db_->Put(wo, meta_key(key), metadata_to_json(meta));
     if (!s.ok()) throw Error("leveldb set updated meta " + key + ": " + s.ToString());
     return meta;
@@ -264,9 +274,9 @@ void LevelDbStore::clear() {
         }
     }
     leveldb::WriteOptions wo;
-    wo.sync = true;
     leveldb::Status s = db_->Write(wo, &batch);
     if (!s.ok()) throw Error("leveldb clear: " + s.ToString());
+    total_bytes_.store(0, std::memory_order_relaxed);
 }
 
 Stats LevelDbStore::stats() {
@@ -286,6 +296,12 @@ Stats LevelDbStore::stats() {
 
 void LevelDbStore::enforce_max_size(std::int64_t max_bytes) {
     if (max_bytes <= 0) return;
+
+    // Fast path: while the running total is under budget, skip the full scan that
+    // would otherwise run on every write. -1 means "not yet seeded" -> fall
+    // through to the scan below, which both evicts (if needed) and seeds it.
+    std::int64_t hint = total_bytes_.load(std::memory_order_relaxed);
+    if (hint >= 0 && hint <= max_bytes) return;
 
     struct Candidate {
         std::string key;
@@ -311,7 +327,10 @@ void LevelDbStore::enforce_max_size(std::int64_t max_bytes) {
         }
     }
 
-    if (total <= max_bytes) return;
+    if (total <= max_bytes) {
+        total_bytes_.store(total, std::memory_order_relaxed);  // seed/correct the hint
+        return;
+    }
 
     std::sort(candidates.begin(), candidates.end(),
               [](const Candidate& a, const Candidate& b) { return a.last_access < b.last_access; });
@@ -324,9 +343,9 @@ void LevelDbStore::enforce_max_size(std::int64_t max_bytes) {
         total -= c.size;
     }
     leveldb::WriteOptions wo;
-    wo.sync = true;
     leveldb::Status s = db_->Write(wo, &batch);
     if (!s.ok()) throw Error("leveldb evict: " + s.ToString());
+    total_bytes_.store(total, std::memory_order_relaxed);  // exact post-eviction total
 }
 
 int LevelDbStore::expire(const std::function<bool(const Metadata&)>& match, TimePoint when) {
@@ -349,8 +368,7 @@ int LevelDbStore::expire(const std::function<bool(const Metadata&)>& match, Time
         }
     }
     if (affected == 0) return 0;
-    leveldb::WriteOptions wo;
-    wo.sync = true;
+    leveldb::WriteOptions wo;  // sync=false: expiry only flips metadata timestamps
     leveldb::Status s = db_->Write(wo, &batch);
     if (!s.ok()) throw Error("leveldb expire: " + s.ToString());
     return affected;

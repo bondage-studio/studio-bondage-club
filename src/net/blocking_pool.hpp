@@ -7,9 +7,11 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/asio/use_awaitable.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <optional>
+#include <thread>
 #include <type_traits>
 #include <utility>
 
@@ -20,7 +22,12 @@ namespace sbc::net {
 // run_blocking().
 class BlockingPool {
 public:
-    explicit BlockingPool(std::size_t threads = 4) : pool_(threads) {}
+    // Default to the hardware thread count (min 4) so concurrent cache reads
+    // (e.g. singleflight followers loading bodies) don't serialize on too few
+    // worker threads.
+    explicit BlockingPool(std::size_t threads = 0)
+        : pool_(threads ? threads
+                        : std::max<std::size_t>(4, std::thread::hardware_concurrency())) {}
 
     boost::asio::thread_pool& pool() { return pool_; }
 

@@ -18,6 +18,7 @@
 #include "cache/version.hpp"
 #include "common/error.hpp"
 #include "net/blocking_pool.hpp"
+#include "net/content_decoding.hpp"
 #include "net/http_client.hpp"
 #include "net/io_runtime.hpp"
 #include "net/socks5.hpp"
@@ -35,10 +36,9 @@ using cache::TimePoint;
 struct FetchResult {
     bool committed = false;
     std::shared_ptr<cache::Backend> store;
-    Metadata meta;
-    fs::path temp_path;
-    std::shared_ptr<cache::TempFileGuard> cleanup;
-    Metadata temp_meta;
+    Metadata meta;        // committed entry (read body from `store` via open_body)
+    Metadata temp_meta;   // uncacheable/buffer-mode entry metadata
+    std::string body;     // in-memory body for uncacheable/buffer-mode results
     std::string cache_status;
     std::string cache_control;
 };
@@ -99,11 +99,17 @@ std::string single_joining_slash(const std::string& a, const std::string& b) {
     return a + b;
 }
 
-std::string read_whole_file(const fs::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
+// Like sanitize(), but also drops Content-Encoding and Content-Length: cached and
+// streamed bodies are the decoded identity representation, so the upstream's
+// encoding/length headers no longer apply.
+HeaderMap sanitize_decoded(const HeaderMap& src) {
+    HeaderMap out;
+    for (const auto& e : src.entries()) {
+        if (rp_hop(e.first)) continue;
+        if (iequals(e.first, "Content-Encoding") || iequals(e.first, "Content-Length")) continue;
+        out.add(e.first, e.second);
+    }
+    return out;
 }
 
 // A rule's cacheable-status override (if any) wins over the global default set.
@@ -113,16 +119,51 @@ std::set<int> resolve_cacheable_statuses(const std::set<int>& global,
     return std::set<int>(rule_override.begin(), rule_override.end());
 }
 
-class WriterSink : public net::BodySink {
+// TeeState is shared between the fetch's HeadHandler and its TeeSink. The
+// HeadHandler decides whether to stream to the client and builds the decoder; the
+// sink decodes each upstream chunk into identity bytes, accumulates them for the
+// cache, and (in streaming mode) forwards them to the client.
+struct TeeState {
+    std::string body;                            // accumulated identity (or raw) body
+    std::unique_ptr<net::ContentDecoder> decoder;  // null until the header arrives
+    bool streaming = false;     // actively writing decoded body to the client
+    bool raw_passthrough = false;  // unsupported encoding: forward raw, do not cache
+    bool client_gone = false;   // client write failed mid-stream; keep filling cache
+};
+
+// TeeSink decodes upstream body chunks to identity, buffers them, and streams to
+// the client. A failed client write stops client delivery but keeps filling the
+// cache so concurrent waiters (and the stored entry) still benefit.
+class TeeSink : public net::BodySink {
 public:
-    explicit WriterSink(cache::Writer* writer) : writer_(writer) {}
+    TeeSink(std::shared_ptr<TeeState> st, server::ResponseWriter* w) : st_(std::move(st)), w_(w) {}
+
     asio::awaitable<void> on_chunk(std::string_view data) override {
-        writer_->write(data);
-        co_return;
+        if (st_->raw_passthrough) {
+            st_->body.append(data);
+            co_await emit(data);
+            co_return;
+        }
+        if (!st_->decoder) co_return;  // 304 / 5xx-with-cache: no body to decode
+        std::string out = st_->decoder->decode(data);
+        if (!out.empty()) {
+            st_->body.append(out);
+            co_await emit(out);
+        }
     }
 
 private:
-    cache::Writer* writer_;
+    asio::awaitable<void> emit(std::string_view data) {
+        if (!st_->streaming || w_ == nullptr || st_->client_gone) co_return;
+        try {
+            co_await w_->write_chunk(data);
+        } catch (...) {
+            st_->client_gone = true;  // drop client delivery; cache fill continues
+        }
+    }
+
+    std::shared_ptr<TeeState> st_;
+    server::ResponseWriter* w_;
 };
 
 class ResponseWriterSink : public net::BodySink {
@@ -329,6 +370,17 @@ void Provider::schedule_touch(const std::shared_ptr<cache::Backend>& store, cons
     asio::post(ctx_.blocking->pool(), [s, k, now]() { s->touch(k, now); });
 }
 
+void Provider::maybe_touch(const std::shared_ptr<cache::Backend>& store, const std::string& key,
+                           const Metadata& meta, TimePoint now) {
+    // Throttle access-time bookkeeping: an entry hit repeatedly would otherwise
+    // produce a metadata write per request. Refresh only once the recorded access
+    // time is older than the throttle window (a never-touched entry refreshes now).
+    constexpr auto kTouchThrottle = std::chrono::seconds(60);
+    TimePoint last = meta.last_accessed_at;
+    if (last.time_since_epoch().count() != 0 && now - last < kTouchThrottle) return;
+    schedule_touch(store, key, now);
+}
+
 void Provider::record_traffic(const std::string& url, const std::string& cache_status,
                               int status_code, std::int64_t bytes) const {
     if (ctx_.traffic == nullptr) return;
@@ -391,14 +443,14 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
         action.version_revalidate && !version.empty() && cached && cached->version != version;
     bool force_reval = cache::request_forces_revalidation(req.headers) || version_mismatch;
     if (cached && cached->fresh(now) && !force_reval) {
-        schedule_touch(store, key, now);
+        maybe_touch(store, key, *cached, now);
         co_await serve_entry(req, w, store, *cached, "HIT", action.cache_control, false);
         co_return;
     }
 
     if (req.is_head()) {
         if (cached && !force_reval) {
-            schedule_touch(store, key, now);
+            maybe_touch(store, key, *cached, now);
             co_await serve_entry(req, w, store, *cached, "STALE-HEAD", action.cache_control, false);
             co_return;
         }
@@ -417,8 +469,8 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     try {
         result = co_await flights_.do_call(
             key,
-            [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version,
-             &req]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
+            [this, &snap, target, key, store, ttl, max_bytes, action, force_reval, version, &req,
+             &w]() -> asio::awaitable<std::shared_ptr<FetchResult>> {
                 std::optional<Metadata> refreshed;
                 try {
                     refreshed = co_await net::run_blocking(
@@ -433,12 +485,13 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
                 }
                 // Only revalidate-mode versions are recorded in metadata (and so
                 // surface in the versions/expire UI); immutable versions live in
-                // the key and need no tag.
+                // the key and need no tag. The leader passes &w so fetch() streams
+                // the response straight to this client while filling the cache.
                 co_return co_await fetch(
                     snap, target, key, store, ttl, max_bytes, action.force_cache,
                     resolve_cacheable_statuses(snap.cacheable_statuses, action.cacheable_status_codes),
                     action.cache_control, action.version_revalidate ? version : std::string(),
-                    refreshed, req);
+                    refreshed, req, &w);
             });
     } catch (const std::exception& e) {
         fetch_error = e.what();
@@ -446,6 +499,9 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     }
 
     if (failed) {
+        // If the leader already began streaming to this client, the header is sent
+        // and we cannot fall back to stale/502 — just drop the connection.
+        if (w.header_sent()) co_return;
         if (cached) {
             spdlog::warn("serving stale cache after upstream failure url={} error={}",
                          target.string(), fetch_error);
@@ -458,6 +514,10 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
         co_return;
     }
 
+    // The singleflight leader already streamed the full response inline (header
+    // sent by fetch()). Followers — and the leader on a 304 revalidate, which has
+    // no streamed body — serve from the committed/uncacheable result here.
+    if (w.header_sent()) co_return;
     co_await serve_result(req, w, *result);
 }
 
@@ -465,41 +525,104 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
     std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache,
     std::set<int> cacheable_statuses, std::string cache_control, std::string version,
-    std::optional<Metadata> cached, server::Request& req) {
+    std::optional<Metadata> cached, server::Request& req, server::ResponseWriter* w) {
     net::ClientRequest creq;
     creq.method = "GET";
     creq.target = target;
     for (const auto& e : req.headers.entries()) {
         if (!rp_hop(e.first) && !iequals(e.first, "Range")) creq.headers.add(e.first, e.second);
     }
-    creq.headers.set("Accept-Encoding", "identity");
+    // Request what we can decode. We cache + serve a single identity
+    // representation, so this is independent of the downstream client's
+    // Accept-Encoding — the win is a smaller/faster upstream transfer.
+    creq.headers.set("Accept-Encoding", "gzip, br");
     if (cached) {
         if (auto et = cached->etag(); !et.empty()) creq.headers.set("If-None-Match", et);
         if (auto lm = cached->last_modified(); !lm.empty())
             creq.headers.set("If-Modified-Since", lm);
     }
 
-    auto writer = co_await net::run_blocking(*ctx_.blocking,
-                                             [store, key]() { return store->new_writer(key); });
-    cache::Writer* wptr = writer.get();
-    WriterSink sink(wptr);
+    bool had_cached = cached.has_value();
+    auto st = std::make_shared<TeeState>();
 
+    // Runs once the upstream header arrives: decides streaming and sets up the
+    // decoder. 304 (our conditional GET matched) and 5xx-with-cache are resolved
+    // after the body completes (revalidate-from-cache / stale fallback), so they
+    // neither stream nor decode here.
+    net::HeadHandler on_head =
+        [st, w, had_cached, cache_control](const net::ClientResponse& resp) -> asio::awaitable<void> {
+        if (resp.status == 304) co_return;
+        if (had_cached && resp.status >= 500) co_return;
+
+        std::string ce = resp.headers.get("Content-Encoding");
+        st->decoder = net::make_decoder(ce);
+        if (!st->decoder) st->raw_passthrough = true;  // unknown encoding -> raw, uncached
+
+        if (w == nullptr) co_return;  // buffer mode (homepage): collect body only
+
+        // Stream to the client. When decoding, the identity length is unknown
+        // up-front and the encoding/length no longer apply, so use chunked framing
+        // and drop those headers; a raw passthrough keeps them.
+        HeaderMap h;
+        for (const auto& e : resp.headers.entries()) {
+            if (rp_hop(e.first)) continue;
+            if (!st->raw_passthrough &&
+                (iequals(e.first, "Content-Encoding") || iequals(e.first, "Content-Length")))
+                continue;
+            h.add(e.first, e.second);
+        }
+        if (!cache_control.empty()) h.set("Cache-Control", cache_control);
+        h.set("X-Studio-Cache", "MISS");
+        std::optional<std::int64_t> clen;
+        if (st->raw_passthrough) {
+            if (auto cl = resp.headers.get("Content-Length"); !cl.empty()) {
+                try {
+                    clen = std::stoll(cl);
+                } catch (...) {
+                }
+            }
+        }
+        st->streaming = true;
+        try {
+            co_await w->send_header(resp.status, std::move(h), clen);
+        } catch (...) {
+            // Client vanished while sending the header: keep filling the cache so
+            // concurrent waiters still benefit; just stop delivering to this client.
+            st->streaming = false;
+            st->client_gone = true;
+        }
+    };
+
+    TeeSink sink(st, w);
     net::ClientResponse resp;
     std::exception_ptr ferr;
     try {
-        resp = co_await snap.client->fetch(creq, nullptr, sink);
+        resp = co_await snap.client->fetch(creq, on_head, sink);
     } catch (...) {
         ferr = std::current_exception();
     }
-    if (ferr) {
-        co_await net::run_blocking(*ctx_.blocking, [wptr]() { wptr->abort(); });
-        std::rethrow_exception(ferr);
+    if (ferr) std::rethrow_exception(ferr);
+
+    // Flush the decoder's trailing output (no-op for a raw passthrough).
+    if (st->decoder) {
+        std::string tail = st->decoder->finish();
+        if (!tail.empty()) {
+            st->body.append(tail);
+            if (st->streaming && w && !st->client_gone) {
+                try {
+                    co_await w->write_chunk(tail);
+                } catch (...) {
+                    st->client_gone = true;
+                }
+            }
+        }
     }
 
     auto now = Clock::now();
 
+    // 304: our conditional GET matched — refresh metadata, reuse the cached body.
     if (resp.status == 304 && cached) {
-        HeaderMap merged = merge_headers(cached->header, sanitize(resp.headers));
+        HeaderMap merged = merge_headers(cached->header, sanitize_decoded(resp.headers));
         auto updated =
             co_await net::run_blocking(*ctx_.blocking, [store, key, merged, now, ttl, version]() {
                 return store->update_metadata(key, [&](Metadata m) {
@@ -510,13 +633,11 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
                     return m;
                 });
             });
-        co_await net::run_blocking(*ctx_.blocking, [wptr]() { wptr->abort(); });
         Metadata meta = updated ? *updated : *cached;
         co_return make_committed(store, meta, "REVALIDATED", cache_control);
     }
 
     if (cached && resp.status >= 500) {
-        co_await net::run_blocking(*ctx_.blocking, [wptr]() { wptr->abort(); });
         throw Error("upstream returned status " + std::to_string(resp.status));
     }
 
@@ -524,32 +645,49 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     meta.key = key;
     meta.url = target.string();
     meta.status_code = resp.status;
-    meta.header = sanitize(resp.headers);
+    // Raw passthrough keeps the (compressed) body + its encoding header; the normal
+    // path stores the decoded identity body with the encoding/length stripped.
+    meta.header = st->raw_passthrough ? sanitize(resp.headers) : sanitize_decoded(resp.headers);
     meta.stored_at = now;
     meta.expires_at = cache::expiration(now, ttl);
     meta.version = version;
 
-    bool cacheable = cache::response_cacheable("GET", creq.headers, resp.status, resp.headers,
-                                               cacheable_statuses) ||
-                     (force_cache && cacheable_statuses.count(resp.status));
+    bool cacheable = !st->raw_passthrough &&
+                     (cache::response_cacheable("GET", creq.headers, resp.status, meta.header,
+                                                cacheable_statuses) ||
+                      (force_cache && cacheable_statuses.count(resp.status)));
     if (cacheable) {
         Metadata committed = co_await net::run_blocking(
-            *ctx_.blocking, [wptr, meta]() { return wptr->commit(meta); });
+            *ctx_.blocking, [store, key, body = std::move(st->body), meta]() mutable {
+                return store->put(key, std::move(body), std::move(meta));
+            });
         co_await net::run_blocking(*ctx_.blocking,
                                    [store, max_bytes]() { store->enforce_max_size(max_bytes); });
+        if (st->streaming && w && !st->client_gone) {
+            // The body is fully delivered; a client that drops before the final
+            // (chunked) terminator must not surface as a handler error.
+            try {
+                co_await w->finish();
+            } catch (...) {
+            }
+            record_traffic(target.string(), "MISS", resp.status, committed.body_size);
+        }
         co_return make_committed(store, committed, "MISS", cache_control);
     }
 
-    auto kept = co_await net::run_blocking(*ctx_.blocking, [wptr]() { return wptr->keep_temp(); });
-    std::error_code ec;
-    auto sz = fs::file_size(kept.first, ec);
-    meta.body_size = ec ? 0 : static_cast<std::int64_t>(sz);
-
+    // Uncacheable: the body is already in memory (identity, or raw for passthrough).
+    meta.body_size = static_cast<std::int64_t>(st->body.size());
+    if (st->streaming && w && !st->client_gone) {
+        try {
+            co_await w->finish();
+        } catch (...) {
+        }
+        record_traffic(target.string(), "MISS-UNCACHED", resp.status, meta.body_size);
+    }
     auto fr = std::make_shared<FetchResult>();
     fr->committed = false;
-    fr->temp_path = kept.first;
-    fr->cleanup = kept.second;
     fr->temp_meta = meta;
+    fr->body = std::move(st->body);
     fr->cache_status = "MISS-UNCACHED";
     fr->cache_control = cache_control;
     co_return fr;
@@ -647,11 +785,9 @@ asio::awaitable<void> Provider::serve_result(server::Request& req, server::Respo
         co_return;
     }
 
-    fs::path path = result.temp_path;
-    std::string body =
-        co_await net::run_blocking(*ctx_.blocking, [path]() { return read_whole_file(path); });
+    // Uncacheable result: body is held in memory (see Provider::fetch).
     record_traffic(result.temp_meta.url, result.cache_status, result.temp_meta.status_code,
-                   static_cast<std::int64_t>(body.size()));
+                   static_cast<std::int64_t>(result.body.size()));
 
     HeaderMap h;
     for (const auto& e : result.temp_meta.header.entries()) {
@@ -665,8 +801,8 @@ asio::awaitable<void> Provider::serve_result(server::Request& req, server::Respo
         co_await w.finish();
     } else {
         co_await w.send_header(result.temp_meta.status_code, std::move(h),
-                               static_cast<std::int64_t>(body.size()));
-        co_await w.write_chunk(body);
+                               static_cast<std::int64_t>(result.body.size()));
+        co_await w.write_chunk(result.body);
         co_await w.finish();
     }
 }
@@ -699,7 +835,7 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         action.version_revalidate && !version.empty() && cached && cached->version != version;
     bool force_reval = cache::request_forces_revalidation(req.headers) || version_mismatch;
     if (cached && cached->fresh(now) && !force_reval) {
-        schedule_touch(store, key, now);
+        maybe_touch(store, key, *cached, now);
         result = make_committed(store, *cached, "HIT", action.cache_control);
     } else {
         std::string fetch_error;
@@ -721,12 +857,14 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
                     if (refreshed && refreshed->fresh(Clock::now()) && !reval) {
                         co_return make_committed(store, *refreshed, "HIT", action.cache_control);
                     }
+                    // Buffer mode (w == nullptr): the homepage HTML is post-processed,
+                    // so collect the decoded body instead of streaming it.
                     co_return co_await fetch(
                         *snap, target, key, store, ttl, max_bytes, action.force_cache,
                         resolve_cacheable_statuses(snap->cacheable_statuses,
                                                    action.cacheable_status_codes),
                         action.cache_control, action.version_revalidate ? version : std::string(),
-                        refreshed, fetch_req);
+                        refreshed, fetch_req, nullptr);
                 });
         } catch (const std::exception& e) {
             fetch_error = e.what();
@@ -749,11 +887,9 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         doc.body =
             co_await net::run_blocking(*ctx_.blocking, [s, skey]() { return s->open_body(skey); });
     } else {
-        fs::path path = result->temp_path;
         doc.status_code = result->temp_meta.status_code;
         doc.header = result->temp_meta.header;
-        doc.body =
-            co_await net::run_blocking(*ctx_.blocking, [path]() { return read_whole_file(path); });
+        doc.body = result->body;
     }
     record_traffic(doc.url, doc.cache_status, doc.status_code,
                    static_cast<std::int64_t>(doc.body.size()));

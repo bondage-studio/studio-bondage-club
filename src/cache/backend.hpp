@@ -53,6 +53,12 @@ public:
     virtual std::optional<Metadata> get(const std::string& key) = 0;
     virtual std::string open_body(const std::string& key) = 0;
     virtual std::unique_ptr<Writer> new_writer(const std::string& key) = 0;
+
+    // put stores a fully-buffered body + metadata in one atomic write, computing
+    // body_size/body_sha256 from `body`. This is the streaming reverse-proxy hot
+    // path: the body is accumulated in memory (no temp file round-trip) and
+    // written directly. Returns the committed metadata.
+    virtual Metadata put(const std::string& key, std::string body, Metadata meta) = 0;
     virtual std::optional<Metadata> update_metadata(
         const std::string& key, const std::function<Metadata(Metadata)>& fn) = 0;
     virtual void touch(const std::string& key, TimePoint now) = 0;

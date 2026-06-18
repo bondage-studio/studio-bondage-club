@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -33,6 +34,7 @@ public:
     std::optional<Metadata> get(const std::string& key) override;
     std::string open_body(const std::string& key) override;
     std::unique_ptr<Writer> new_writer(const std::string& key) override;
+    Metadata put(const std::string& key, std::string body, Metadata meta) override;
     std::optional<Metadata> update_metadata(const std::string& key,
                                             const std::function<Metadata(Metadata)>& fn) override;
     void touch(const std::string& key, TimePoint now) override;
@@ -49,10 +51,19 @@ public:
 private:
     LevelDbStore(std::string name, std::string dir, leveldb::DB* db);
 
+    // Shared write path for put()/commit_temp(): compute sha256/body_size, write
+    // the body+metadata batch (sync=false) and bump the running byte total.
+    Metadata store_body(std::string body, Metadata meta);
+
     std::string name_;
     std::string dir_;
     std::unique_ptr<leveldb::DB> db_;
     std::mutex write_mu_;
+
+    // Running sum of cached body bytes, so enforce_max_size() is O(1) while under
+    // budget instead of a full metadata scan per write. -1 = not yet initialized;
+    // the first enforce_max_size() lazily scans to seed it.
+    std::atomic<std::int64_t> total_bytes_{-1};
 };
 
 }  // namespace sbc::cache

@@ -18,7 +18,9 @@
     },
     "leveldb",
     "nlohmann-json",
-    "spdlog"
+    "spdlog",
+    "zlib",
+    "brotli"
   ],
   "features": {
     "vendored-openssl": {

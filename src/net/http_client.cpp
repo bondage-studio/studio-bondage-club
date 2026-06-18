@@ -26,6 +26,7 @@ namespace {
 
 constexpr auto kIdleMax = std::chrono::seconds(90);
 constexpr std::size_t kMaxIdlePerHost = 8;
+constexpr auto kDnsTtl = std::chrono::seconds(60);
 
 bool iequals(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
@@ -142,10 +143,18 @@ asio::awaitable<ClientResponse> do_request(Stream& stream, const ClientRequest& 
 
 }  // namespace
 
+struct DnsCacheEntry {
+    std::vector<tcp::endpoint> endpoints;
+    SteadyClock::time_point expiry;
+};
+
 struct HttpClient::Pool {
     std::mutex mu;
     std::unordered_multimap<std::string, PoolEntry<PlainStream>> plain;
     std::unordered_multimap<std::string, PoolEntry<TlsStream>> tls;
+
+    std::mutex dns_mu;
+    std::unordered_map<std::string, DnsCacheEntry> dns;
 };
 
 HttpClient::HttpClient(asio::any_io_executor executor, TlsContext& tls,
@@ -160,9 +169,27 @@ asio::awaitable<tcp::socket> HttpClient::dial(const std::string& host, std::uint
     if (socks5_) {
         co_return co_await socks5_connect(executor_, *socks5_, host, port);
     }
-    tcp::resolver resolver(executor_);
-    auto endpoints =
-        co_await resolver.async_resolve(host, std::to_string(port), asio::use_awaitable);
+
+    // Resolve via a short-TTL cache so connection-pool misses don't pay a fresh
+    // DNS round-trip each time (the browser caches DNS too).
+    std::string key = host + ":" + std::to_string(port);
+    std::vector<tcp::endpoint> endpoints;
+    {
+        std::lock_guard<std::mutex> lk(pool_->dns_mu);
+        auto it = pool_->dns.find(key);
+        if (it != pool_->dns.end() && SteadyClock::now() < it->second.expiry) {
+            endpoints = it->second.endpoints;
+        }
+    }
+    if (endpoints.empty()) {
+        tcp::resolver resolver(executor_);
+        auto results =
+            co_await resolver.async_resolve(host, std::to_string(port), asio::use_awaitable);
+        for (const auto& e : results) endpoints.push_back(e.endpoint());
+        std::lock_guard<std::mutex> lk(pool_->dns_mu);
+        pool_->dns[key] = DnsCacheEntry{endpoints, SteadyClock::now() + kDnsTtl};
+    }
+
     tcp::socket socket(executor_);
     co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
     co_return socket;

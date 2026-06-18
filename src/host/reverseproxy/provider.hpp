@@ -78,11 +78,14 @@ private:
 
     boost::asio::awaitable<void> serve_target(server::Request& req, server::ResponseWriter& w,
                                               const Snapshot& snap, Url target);
+    // `w` non-null => streaming mode: the response is streamed straight to this
+    // client while the cache fills (singleflight leader). null => buffer mode: the
+    // decoded body is collected into the FetchResult (homepage post-processing).
     boost::asio::awaitable<std::shared_ptr<FetchResult>> fetch(
         const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
         std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache,
         std::set<int> cacheable_statuses, std::string cache_control, std::string version,
-        std::optional<cache::Metadata> cached, server::Request& req);
+        std::optional<cache::Metadata> cached, server::Request& req, server::ResponseWriter* w);
     boost::asio::awaitable<void> proxy_pass(server::Request& req, server::ResponseWriter& w,
                                             const Snapshot& snap, const Url& target,
                                             std::string cache_status);
@@ -95,6 +98,10 @@ private:
 
     void schedule_touch(const std::shared_ptr<cache::Backend>& store, const std::string& key,
                         cache::TimePoint now);
+    // Throttled schedule_touch: skips the access-time write when the entry was
+    // touched within the throttle window (avoids a write per hot HIT).
+    void maybe_touch(const std::shared_ptr<cache::Backend>& store, const std::string& key,
+                     const cache::Metadata& meta, cache::TimePoint now);
 
     // Records one served request into the shared traffic collector (if present),
     // keyed by the target host (parsed from `url`), the full resource URL, and its
