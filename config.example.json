@@ -51,6 +51,7 @@
         "store": "mods"
       },
       {
+        "host": "bondage-europe.com",
         "pathPattern": "**",
         "keyMode": "path",
         "forceCache": true,

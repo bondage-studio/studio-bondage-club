@@ -36,9 +36,9 @@ using cache::TimePoint;
 struct FetchResult {
     bool committed = false;
     std::shared_ptr<cache::Backend> store;
-    Metadata meta;        // committed entry (read body from `store` via open_body)
-    Metadata temp_meta;   // uncacheable/buffer-mode entry metadata
-    std::string body;     // in-memory body for uncacheable/buffer-mode results
+    Metadata meta;       // committed entry (read body from `store` via open_body)
+    Metadata temp_meta;  // uncacheable/buffer-mode entry metadata
+    std::string body;    // in-memory body for uncacheable/buffer-mode results
     std::string cache_status;
     std::string cache_control;
 };
@@ -130,6 +130,19 @@ bool encoding_transforms(const std::string& content_encoding) {
     return iequals(t, "gzip") || iequals(t, "x-gzip") || iequals(t, "deflate") || iequals(t, "br");
 }
 
+// Stale-after time for a freshly stored / revalidated entry. An explicit per-rule
+// TTL wins; a curated cache_control override (immutable/long-lived rules) keeps the
+// historical "never expires via TTL" behavior (its freshness is the override + any
+// version revalidation); everything else is a default route that follows the
+// upstream response's own freshness (cache::upstream_expiry).
+std::optional<TimePoint> entry_expiry(TimePoint now, std::chrono::seconds ttl,
+                                      const std::string& cache_control,
+                                      const HeaderMap& resp_headers) {
+    if (ttl > std::chrono::seconds(0)) return cache::expiration(now, ttl);
+    if (!cache_control.empty()) return std::nullopt;
+    return cache::upstream_expiry(now, resp_headers);
+}
+
 // A rule's cacheable-status override (if any) wins over the global default set.
 std::set<int> resolve_cacheable_statuses(const std::set<int>& global,
                                          const std::vector<int>& rule_override) {
@@ -142,11 +155,11 @@ std::set<int> resolve_cacheable_statuses(const std::set<int>& global,
 // sink decodes each upstream chunk into identity bytes, accumulates them for the
 // cache, and (in streaming mode) forwards them to the client.
 struct TeeState {
-    std::string body;                            // accumulated identity (or raw) body
+    std::string body;                              // accumulated identity (or raw) body
     std::unique_ptr<net::ContentDecoder> decoder;  // null until the header arrives
-    bool streaming = false;     // actively writing decoded body to the client
+    bool streaming = false;                        // actively writing decoded body to the client
     bool raw_passthrough = false;  // unsupported encoding: forward raw, do not cache
-    bool client_gone = false;   // client write failed mid-stream; keep filling cache
+    bool client_gone = false;      // client write failed mid-stream; keep filling cache
 };
 
 // TeeSink decodes upstream body chunks to identity, buffers them, and streams to
@@ -507,7 +520,8 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
                 // the response straight to this client while filling the cache.
                 co_return co_await fetch(
                     snap, target, key, store, ttl, max_bytes, action.force_cache,
-                    resolve_cacheable_statuses(snap.cacheable_statuses, action.cacheable_status_codes),
+                    resolve_cacheable_statuses(snap.cacheable_statuses,
+                                               action.cacheable_status_codes),
                     action.cache_control, action.version_revalidate ? version : std::string(),
                     refreshed, req, &w);
             });
@@ -567,8 +581,8 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     // decoder. 304 (our conditional GET matched) and 5xx-with-cache are resolved
     // after the body completes (revalidate-from-cache / stale fallback), so they
     // neither stream nor decode here.
-    net::HeadHandler on_head =
-        [st, w, had_cached, cache_control](const net::ClientResponse& resp) -> asio::awaitable<void> {
+    net::HeadHandler on_head = [st, w, had_cached, cache_control](
+                                   const net::ClientResponse& resp) -> asio::awaitable<void> {
         if (resp.status == 304) co_return;
         if (had_cached && resp.status >= 500) co_return;
 
@@ -651,12 +665,14 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     // 304: our conditional GET matched — refresh metadata, reuse the cached body.
     if (resp.status == 304 && cached) {
         HeaderMap merged = merge_headers(cached->header, sanitize_decoded(resp.headers));
-        auto updated =
-            co_await net::run_blocking(*ctx_.blocking, [store, key, merged, now, ttl, version]() {
+        auto updated = co_await net::run_blocking(
+            *ctx_.blocking, [store, key, merged, now, ttl, version, cache_control]() {
                 return store->update_metadata(key, [&](Metadata m) {
                     m.header = merged;
                     m.stored_at = now;
-                    m.expires_at = cache::expiration(now, ttl);
+                    // Refresh freshness from the just-revalidated headers (a 304 may
+                    // carry updated Cache-Control/Expires), same policy as a store.
+                    m.expires_at = entry_expiry(now, ttl, cache_control, merged);
                     if (!version.empty()) m.version = version;
                     return m;
                 });
@@ -677,13 +693,16 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     // path stores the decoded identity body with the encoding/length stripped.
     meta.header = st->raw_passthrough ? sanitize(resp.headers) : sanitize_decoded(resp.headers);
     meta.stored_at = now;
-    meta.expires_at = cache::expiration(now, ttl);
+    meta.expires_at = entry_expiry(now, ttl, cache_control, meta.header);
     meta.version = version;
 
-    bool cacheable = !st->raw_passthrough &&
-                     (cache::response_cacheable("GET", creq.headers, resp.status, meta.header,
-                                                cacheable_statuses) ||
-                      (force_cache && cacheable_statuses.count(resp.status)));
+    // A default route (no forced caching) must honor Cache-Control: private — a
+    // shared cache may not store it. force_cache and curated rules bypass this.
+    bool cacheable =
+        !st->raw_passthrough && ((cache::response_cacheable("GET", creq.headers, resp.status,
+                                                            meta.header, cacheable_statuses) &&
+                                  !cache::response_private(meta.header)) ||
+                                 (force_cache && cacheable_statuses.count(resp.status)));
     if (cacheable) {
         Metadata committed = co_await net::run_blocking(
             *ctx_.blocking, [store, key, body = std::move(st->body), meta]() mutable {
@@ -781,7 +800,8 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
     std::string key = meta.key;
     std::string body = co_await net::run_blocking(*ctx_.blocking,
                                                   [store, key]() { return store->open_body(key); });
-    record_traffic(meta.url, cache_status, meta.status_code, static_cast<std::int64_t>(body.size()));
+    record_traffic(meta.url, cache_status, meta.status_code,
+                   static_cast<std::int64_t>(body.size()));
 
     HeaderMap h;
     for (const auto& e : meta.header.entries()) {

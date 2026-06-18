@@ -95,6 +95,54 @@ SBC_TEST(policy_forces_revalidation_and_expiration) {
     CHECK(expiration(now, std::chrono::seconds(60)).has_value());
 }
 
+SBC_TEST(policy_upstream_expiry) {
+    auto now = Clock::now();
+
+    // No freshness information at all -> immediately stale (revalidate every request).
+    HeaderMap empty;
+    CHECK(upstream_expiry(now, empty) == now);
+
+    // max-age sets the lifetime; s-maxage (shared-cache specific) wins over it.
+    HeaderMap maxage;
+    maxage.set("Cache-Control", "public, max-age=600");
+    CHECK(upstream_expiry(now, maxage) == now + std::chrono::seconds(600));
+    HeaderMap smaxage;
+    smaxage.set("Cache-Control", "max-age=600, s-maxage=60");
+    CHECK(upstream_expiry(now, smaxage) == now + std::chrono::seconds(60));
+
+    // no-cache, max-age=0, and malformed/negative ages -> now.
+    HeaderMap nocache;
+    nocache.set("Cache-Control", "no-cache");
+    CHECK(upstream_expiry(now, nocache) == now);
+    HeaderMap zero;
+    zero.set("Cache-Control", "max-age=0");
+    CHECK(upstream_expiry(now, zero) == now);
+    HeaderMap neg;
+    neg.set("Cache-Control", "max-age=-5");
+    CHECK(upstream_expiry(now, neg) == now);
+    HeaderMap junk;
+    junk.set("Cache-Control", "max-age=abc");
+    CHECK(upstream_expiry(now, junk) == now);
+
+    // Expires is consulted only without a max-age; future honored, past/invalid stale.
+    HeaderMap exp_future;
+    exp_future.set("Expires", "Wed, 21 Oct 2099 07:28:00 GMT");
+    CHECK(upstream_expiry(now, exp_future) == parse_http_date("Wed, 21 Oct 2099 07:28:00 GMT"));
+    HeaderMap exp_past;
+    exp_past.set("Expires", "Wed, 21 Oct 1999 07:28:00 GMT");
+    CHECK(upstream_expiry(now, exp_past).has_value());
+    CHECK(upstream_expiry(now, exp_past).value() < now);
+    HeaderMap exp_bad;
+    exp_bad.set("Expires", "not-a-date");
+    CHECK(upstream_expiry(now, exp_bad) == now);
+
+    // Cache-Control: private is unstorable in a shared cache.
+    HeaderMap priv;
+    priv.set("Cache-Control", "private, max-age=600");
+    CHECK(response_private(priv));
+    CHECK(!response_private(maxage));
+}
+
 SBC_TEST(leveldb_store_roundtrip) {
     auto dir = make_temp_dir("store");
     auto store = LevelDbStore::open("default", dir.string());
