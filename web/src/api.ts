@@ -1,5 +1,7 @@
 import { rpcClient } from "@/rpc/client";
 import type {
+  CacheTraffic,
+  CacheTrafficDetail,
   CacheVersion,
   CheckUpdatesSummary,
   ConfigResponse,
@@ -63,6 +65,21 @@ export function expireCache(filter: ExpireFilter): Promise<{ ok: boolean; expire
 /** List distinct source versions held in a store (empty = aggregate all stores). */
 export function listVersions(store?: string): Promise<CacheVersion[]> {
   return rpcClient.call<CacheVersion[]>("cache.versions", store ? { store } : {});
+}
+
+/** Snapshot of per-host cache hit-rate / bandwidth telemetry since the last reset. */
+export function getCacheTraffic(): Promise<CacheTraffic> {
+  return rpcClient.call<CacheTraffic>("cache.traffic");
+}
+
+/** Per-host resource breakdown (counts/bytes/last-status per URL) for debugging. */
+export function getCacheTrafficDetail(host: string): Promise<CacheTrafficDetail> {
+  return rpcClient.call<CacheTrafficDetail>("cache.trafficDetail", { host });
+}
+
+/** Reset the per-host traffic counters and start a fresh measurement window. */
+export function resetCacheTraffic(): Promise<{ ok: boolean }> {
+  return rpcClient.call<{ ok: boolean }>("cache.resetTraffic");
 }
 
 export function loadGameServerStatus(): Promise<GameServerStatus & { enabled: boolean }> {

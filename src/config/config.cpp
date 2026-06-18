@@ -210,6 +210,13 @@ void Config::validate() const {
     }
     if (cache.max_size_bytes < 0) throw ValidationError("cache maxSizeBytes cannot be negative");
 
+    for (int code : cache.cacheable_status_codes) {
+        if (code < 100 || code > 599) {
+            throw ValidationError("cache cacheableStatusCodes: invalid HTTP status code " +
+                                  std::to_string(code));
+        }
+    }
+
     std::set<std::string> names{"default"};
     for (std::size_t i = 0; i < cache.stores.size(); ++i) {
         const auto& sc = cache.stores[i];
@@ -229,6 +236,12 @@ void Config::validate() const {
     for (const auto& rule : cache.rules) {
         if (!rule.store.empty() && !names.count(rule.store)) {
             throw ValidationError("cache rule references unknown store \"" + rule.store + "\"");
+        }
+        for (int code : rule.cacheable_status_codes) {
+            if (code < 100 || code > 599) {
+                throw ValidationError("cache rule cacheableStatusCodes: invalid HTTP status code " +
+                                      std::to_string(code));
+            }
         }
     }
     try {

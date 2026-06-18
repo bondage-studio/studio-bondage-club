@@ -54,14 +54,16 @@ struct CacheConfig {
     std::int64_t max_size_bytes = 0;
     std::vector<StoreConfig> stores;
     std::vector<cache::CacheRule> rules;
+    std::vector<int> cacheable_status_codes;
 };
 
-#define SBC_CacheConfig_FIELDS(X)                    \
-    X(dir, dir, ALWAYS)                              \
-    X(defaultTTLSeconds, default_ttl_seconds, ALWAYS) \
-    X(maxSizeBytes, max_size_bytes, ALWAYS)          \
-    X(stores, stores, OMIT_EMPTY)                    \
-    X(rules, rules, OMIT_EMPTY)
+#define SBC_CacheConfig_FIELDS(X)                                 \
+    X(dir, dir, ALWAYS)                                           \
+    X(defaultTTLSeconds, default_ttl_seconds, ALWAYS)             \
+    X(maxSizeBytes, max_size_bytes, ALWAYS)                       \
+    X(stores, stores, OMIT_EMPTY)                                 \
+    X(rules, rules, OMIT_EMPTY)                                   \
+    X(cacheableStatusCodes, cacheable_status_codes, OMIT_EMPTY)
 SBC_DEFINE_ALLOWED_KEYS(CacheConfig)
 
 struct PackageConfig {

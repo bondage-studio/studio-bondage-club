@@ -11,6 +11,7 @@
 #include <boost/asio/awaitable.hpp>
 #include <nlohmann/json.hpp>
 
+#include "cache/traffic_stats.hpp"
 #include "config/config.hpp"
 #include "config/store.hpp"
 #include "host/provider.hpp"
@@ -156,6 +157,10 @@ private:
 
     config::Store& store_;
     host::ProviderContext ctx_;
+    // Process-lifetime per-host cache-traffic counters (hit rates / bytes saved),
+    // injected into every provider via ctx_.traffic so they outlive provider
+    // rebuilds on config changes. Backs cache.traffic and the stats stream.
+    cache::TrafficStats cache_traffic_;
     std::string active_address_;
     std::shared_ptr<AssetSource> assets_;
     std::vector<ConfigScope> scopes_;

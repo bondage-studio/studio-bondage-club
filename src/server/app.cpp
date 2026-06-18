@@ -109,6 +109,72 @@ ordered_json stats_json(const cache::Stats& s) {
     return j;
 }
 
+// Serializes one per-host (or aggregate) traffic row: a per-outcome count map, a
+// per-outcome byte map, and the request total. Keys mirror cache::outcome_name.
+ordered_json traffic_host_json(const cache::TrafficStats::HostStat& h) {
+    ordered_json j;
+    if (!h.host.empty()) j["host"] = h.host;
+    ordered_json counts = ordered_json::object();
+    ordered_json bytes = ordered_json::object();
+    for (std::size_t i = 0; i < cache::kOutcomeCount; ++i) {
+        const char* name = cache::outcome_name(static_cast<cache::Outcome>(i));
+        counts[name] = h.count[i];
+        bytes[name] = h.bytes[i];
+    }
+    j["counts"] = std::move(counts);
+    j["bytes"] = std::move(bytes);
+    j["requests"] = h.requests();
+    return j;
+}
+
+// Full traffic snapshot: window bounds, the all-hosts aggregate, and one row per
+// host (already sorted by request volume). Shared by the cache.traffic unary
+// method and the stats.subscribe stream.
+ordered_json traffic_json(const cache::TrafficStats::Snapshot& snap) {
+    ordered_json j;
+    j["sinceMs"] = snap.since_ms;
+    j["nowMs"] = snap.now_ms;
+    j["total"] = traffic_host_json(snap.total);
+    ordered_json hosts = ordered_json::array();
+    for (const auto& h : snap.hosts) hosts.push_back(traffic_host_json(h));
+    j["hosts"] = std::move(hosts);
+    return j;
+}
+
+// One resource row in a host drill-down: per-outcome counts/bytes plus the last
+// HTTP status and last-seen timestamp, for debugging which URLs miss/bypass.
+ordered_json traffic_resource_json(const cache::TrafficStats::ResourceStat& r) {
+    ordered_json j;
+    j["url"] = r.url;
+    ordered_json counts = ordered_json::object();
+    ordered_json bytes = ordered_json::object();
+    for (std::size_t i = 0; i < cache::kOutcomeCount; ++i) {
+        const char* name = cache::outcome_name(static_cast<cache::Outcome>(i));
+        counts[name] = r.count[i];
+        bytes[name] = r.bytes[i];
+    }
+    j["counts"] = std::move(counts);
+    j["bytes"] = std::move(bytes);
+    j["requests"] = r.requests();
+    j["lastStatus"] = r.last_status;
+    j["lastMs"] = r.last_ms;
+    return j;
+}
+
+// Per-host drill-down: the host aggregate plus every tracked resource (sorted by
+// request volume). Backs the cache.trafficDetail unary method.
+ordered_json traffic_detail_json(const cache::TrafficStats::Detail& d) {
+    ordered_json j;
+    j["sinceMs"] = d.since_ms;
+    j["nowMs"] = d.now_ms;
+    j["host"] = d.total.host;
+    j["total"] = traffic_host_json(d.total);
+    ordered_json resources = ordered_json::array();
+    for (const auto& r : d.resources) resources.push_back(traffic_resource_json(r));
+    j["resources"] = std::move(resources);
+    return j;
+}
+
 // percent_decode decodes %XX escapes and '+'-as-space in a query component, so
 // arbitrary GM value keys (which the frontend encodes with encodeURIComponent)
 // round-trip through ?key=K.
@@ -239,6 +305,9 @@ void strip_route_prefix(Request& req, std::string_view prefix) {
 
 App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     : store_(store), ctx_(std::move(ctx)) {
+    // Share the process-lifetime traffic collector with every provider we build
+    // (now and on later config-triggered rebuilds) so hit-rate history persists.
+    ctx_.traffic = &cache_traffic_;
     active_address_ = cfg.server.address();
     assets_ = default_asset_source();
     std::string game_dir = config::game_storage_dir(cfg);
@@ -419,6 +488,19 @@ void App::register_rpc_methods() {
         for (const auto& [ver, count] : versions)
             arr.push_back(ordered_json{{"version", ver}, {"entries", count}});
         co_return arr;
+    });
+    // Per-host cache hit-rate / bandwidth telemetry (since the last reset).
+    d.add("cache.traffic", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
+        co_return traffic_json(cache_traffic_.snapshot());
+    });
+    d.add("cache.trafficDetail", [this](const ordered_json& p) -> asio::awaitable<ordered_json> {
+        std::string host = p.value("host", "");
+        if (host.empty()) throw rpc::RpcError("bad_request", "host is required");
+        co_return traffic_detail_json(cache_traffic_.detail(host));
+    });
+    d.add("cache.resetTraffic", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
+        cache_traffic_.reset();
+        co_return ordered_json{{"ok", true}};
     });
 
     d.add("gameserver.status", [this](const ordered_json&) -> asio::awaitable<ordered_json> {
@@ -1059,6 +1141,7 @@ asio::awaitable<ordered_json> App::rpc_stats_event() {
     }
     evt["stores"] = stores;
     evt["total"] = stats_json(total);
+    evt["traffic"] = traffic_json(cache_traffic_.snapshot());
     co_return evt;
 }
 

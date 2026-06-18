@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <shared_mutex>
 #include <string>
 #include <tuple>
@@ -63,6 +64,7 @@ private:
         std::int64_t default_max = 0;
         std::unordered_map<std::string, std::chrono::seconds> store_ttl;
         std::unordered_map<std::string, std::int64_t> store_max;
+        std::set<int> cacheable_statuses;
     };
 
     std::shared_ptr<const Snapshot> snapshot() const;
@@ -79,8 +81,8 @@ private:
     boost::asio::awaitable<std::shared_ptr<FetchResult>> fetch(
         const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
         std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache,
-        std::string cache_control, std::string version, std::optional<cache::Metadata> cached,
-        server::Request& req);
+        std::set<int> cacheable_statuses, std::string cache_control, std::string version,
+        std::optional<cache::Metadata> cached, server::Request& req);
     boost::asio::awaitable<void> proxy_pass(server::Request& req, server::ResponseWriter& w,
                                             const Snapshot& snap, const Url& target,
                                             std::string cache_status);
@@ -93,6 +95,12 @@ private:
 
     void schedule_touch(const std::shared_ptr<cache::Backend>& store, const std::string& key,
                         cache::TimePoint now);
+
+    // Records one served request into the shared traffic collector (if present),
+    // keyed by the target host (parsed from `url`), the full resource URL, and its
+    // X-Studio-Cache outcome. An unparseable URL is skipped.
+    void record_traffic(const std::string& url, const std::string& cache_status, int status_code,
+                        std::int64_t bytes) const;
 
     host::ProviderContext ctx_;
     std::string cache_dir_;

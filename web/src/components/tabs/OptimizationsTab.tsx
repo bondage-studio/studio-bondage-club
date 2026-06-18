@@ -1,9 +1,14 @@
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getOptimizationSettings, saveOptimizationSettings } from "@/api";
-import { applySettings, getOptimizationStatus, type OptimizationStatus } from "@/optimizations/state";
+import {
+  applySettings,
+  getOptimizationStatus,
+  type OptimizationStatus,
+} from "@/optimizations/state";
 import { PerformanceStats } from "@/components/tabs/PerformanceStats";
 import { Panel } from "@/components/shared/Panel";
+import { TabPanel } from "@/components/ui/tab-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -62,10 +67,7 @@ function newProfileId(): string {
     : `p${Math.floor(Math.random() * 1e9)}`;
 }
 
-type SubTab = "stats" | "config";
-
 export function OptimizationsTab() {
-  const [subTab, setSubTab] = useState<SubTab>("stats");
   const [settings, setSettings] = useState<OptimizationSettings | null>(null);
   // JSON of the last loaded/saved config, for dirty detection.
   const [savedSnapshot, setSavedSnapshot] = useState("");
@@ -207,250 +209,226 @@ export function OptimizationsTab() {
       : -1;
 
   return (
-    <div className="@container grid max-w-3xl gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex gap-0.5 rounded-md border bg-muted p-0.5 text-xs">
-          {(["stats", "config"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setSubTab(t)}
-              className={cn(
-                "rounded px-3 py-1 font-medium transition-colors",
-                subTab === t
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t === "stats" ? "Stats" : "Config"}
-              {t === "config" && dirty && (
-                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" />
-              )}
-            </button>
-          ))}
-        </div>
-        {subTab === "config" && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void reload()}
-              disabled={busy || !dirty}
-            >
-              <RotateCcw size={14} className="mr-1" /> Revert
-            </Button>
-            <Button size="sm" onClick={() => void save()} disabled={busy || !dirty}>
-              <Save size={14} className="mr-1" /> Save
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {subTab === "stats" ? (
+    <TabPanel defaultValue="stats" className="@container max-w-3xl">
+      <TabPanel.Entry value="stats" name="Stats">
         <PerformanceStats />
-      ) : (
-        <>
-          <Panel title="Master switch">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch
-                checked={settings.enabled}
-                onCheckedChange={(v) => setSettings((s) => (s ? { ...s, enabled: v } : s))}
-              />
-              <span>
-                Enable optimizations
-                <span className="ml-1 text-xs text-muted-foreground">
-                  — when off, every hook passes through and the game is untouched.
-                </span>
+      </TabPanel.Entry>
+
+      <TabPanel.Entry
+        value="config"
+        name={
+          <span className="inline-flex items-center">
+            Config
+            {dirty && (
+              <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+            )}
+          </span>
+        }
+      >
+        <div className="flex items-center justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => void reload()} disabled={busy || !dirty}>
+            <RotateCcw size={14} className="mr-1" /> Revert
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={busy || !dirty}>
+            <Save size={14} className="mr-1" /> Save
+          </Button>
+        </div>
+
+        <Panel title="Master switch">
+          <label className="flex items-center gap-2 text-sm">
+            <Switch
+              checked={settings.enabled}
+              onCheckedChange={(v) => setSettings((s) => (s ? { ...s, enabled: v } : s))}
+            />
+            <span>
+              Enable optimizations
+              <span className="ml-1 text-xs text-muted-foreground">
+                — when off, every hook passes through and the game is untouched.
               </span>
-            </label>
-          </Panel>
+            </span>
+          </label>
+        </Panel>
 
-          <Panel
-            title="Profiles"
-            action={
-              <Button size="sm" variant="ghost" onClick={addProfile}>
-                <Plus size={14} className="mr-1" /> Add
-              </Button>
-            }
-          >
-            <div className="grid gap-3">
-              {settings.profiles.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No profiles yet. Add one to get started.
-                </p>
-              )}
-              {settings.profiles.map((profile) => {
-                const live = !dirty && status?.activeProfileId === profile.id;
-                return (
-                  <div
-                    key={profile.id}
-                    className={cn(
-                      "rounded-md border bg-background p-2.5",
-                      live && "border-primary/60 ring-1 ring-primary/30",
-                    )}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <Input
-                        value={profile.name}
-                        onChange={(e) => patchProfile(profile.id, { name: e.target.value })}
-                        className="h-7 max-w-48"
-                        aria-label="Profile name"
-                      />
-                      {live && (
-                        <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                          live
-                        </span>
-                      )}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="ml-auto h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeProfile(profile.id)}
-                        aria-label="Remove profile"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                    <div className="grid gap-1.5 @md:grid-cols-2">
-                      {FEATURES.map((f) => (
-                        <label
-                          key={f.key}
-                          className="flex items-center gap-2 text-sm"
-                          title={f.hint}
-                        >
-                          <Switch
-                            checked={profile.features[f.key]}
-                            onCheckedChange={(v) => setFeature(profile.id, f.key, v)}
-                          />
-                          <span>{f.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
-
-          <Panel
-            title="Rules"
-            action={
-              <Button size="sm" variant="ghost" onClick={addRule}>
-                <Plus size={14} className="mr-1" /> Add
-              </Button>
-            }
-          >
-            <p className="mb-2 text-xs text-muted-foreground">
-              Evaluated top to bottom; the first matching rule selects the active profile. Keep a{" "}
-              <span className="font-medium">Default</span> rule last as the fallback.
-            </p>
-            <div className="grid gap-2">
-              {settings.rules.map((rule, i) => (
+        <Panel
+          title="Profiles"
+          action={
+            <Button size="sm" variant="ghost" onClick={addProfile}>
+              <Plus size={14} className="mr-1" /> Add
+            </Button>
+          }
+        >
+          <div className="grid gap-3">
+            {settings.profiles.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No profiles yet. Add one to get started.
+              </p>
+            )}
+            {settings.profiles.map((profile) => {
+              const live = !dirty && status?.activeProfileId === profile.id;
+              return (
                 <div
-                  key={i}
+                  key={profile.id}
                   className={cn(
-                    "flex flex-wrap items-center gap-2 rounded-md border bg-background p-2",
-                    i === liveRuleIndex && "border-primary/60 ring-1 ring-primary/30",
+                    "rounded-md border bg-background p-2.5",
+                    live && "border-primary/60 ring-1 ring-primary/30",
                   )}
                 >
-                  <span className="w-4 text-center text-xs text-muted-foreground">{i + 1}</span>
-                  <Select
-                    value={rule.trigger}
-                    onValueChange={(v) => patchRule(i, { trigger: v as OptimizationTrigger })}
-                  >
-                    <SelectTrigger className="h-7 w-52">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TRIGGERS.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {rule.trigger === "idle" && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={rule.idleSeconds ?? 30}
-                        onChange={(e) =>
-                          patchRule(i, { idleSeconds: Math.max(1, Number(e.target.value) || 0) })
-                        }
-                        className="h-7 w-16"
-                        aria-label="Idle seconds"
-                      />
-                      s
-                    </div>
-                  )}
-                  <span className="text-xs text-muted-foreground">→</span>
-                  <Select value={rule.profile} onValueChange={(v) => patchRule(i, { profile: v })}>
-                    <SelectTrigger className="h-7 w-40">
-                      <SelectValue placeholder="Profile…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {settings.profiles.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {i === liveRuleIndex && (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                      live
-                    </span>
-                  )}
-                  <div className="ml-auto flex items-center">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Input
+                      value={profile.name}
+                      onChange={(e) => patchProfile(profile.id, { name: e.target.value })}
+                      className="h-7 max-w-48"
+                      aria-label="Profile name"
+                    />
+                    {live && (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                        live
+                      </span>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => moveRule(i, -1)}
-                      disabled={i === 0}
-                      aria-label="Move up"
-                    >
-                      <ArrowUp size={14} />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => moveRule(i, 1)}
-                      disabled={i === settings.rules.length - 1}
-                      aria-label="Move down"
-                    >
-                      <ArrowDown size={14} />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => removeRule(i)}
-                      aria-label="Remove rule"
+                      className="ml-auto h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeProfile(profile.id)}
+                      aria-label="Remove profile"
                     >
                       <Trash2 size={14} />
                     </Button>
                   </div>
+                  <div className="grid gap-1.5 @md:grid-cols-2">
+                    {FEATURES.map((f) => (
+                      <label key={f.key} className="flex items-center gap-2 text-sm" title={f.hint}>
+                        <Switch
+                          checked={profile.features[f.key]}
+                          onCheckedChange={(v) => setFeature(profile.id, f.key, v)}
+                        />
+                        <span>{f.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              ))}
-              {settings.rules.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No rules — the game stays untouched.
-                </p>
-              )}
-            </div>
-          </Panel>
+              );
+            })}
+          </div>
+        </Panel>
 
-          {(error || message) && (
-            <p className={`text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>
-              {error || message}
-            </p>
-          )}
-        </>
-      )}
-    </div>
+        <Panel
+          title="Rules"
+          action={
+            <Button size="sm" variant="ghost" onClick={addRule}>
+              <Plus size={14} className="mr-1" /> Add
+            </Button>
+          }
+        >
+          <p className="mb-2 text-xs text-muted-foreground">
+            Evaluated top to bottom; the first matching rule selects the active profile. Keep a{" "}
+            <span className="font-medium">Default</span> rule last as the fallback.
+          </p>
+          <div className="grid gap-2">
+            {settings.rules.map((rule, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex flex-wrap items-center gap-2 rounded-md border bg-background p-2",
+                  i === liveRuleIndex && "border-primary/60 ring-1 ring-primary/30",
+                )}
+              >
+                <span className="w-4 text-center text-xs text-muted-foreground">{i + 1}</span>
+                <Select
+                  value={rule.trigger}
+                  onValueChange={(v) => patchRule(i, { trigger: v as OptimizationTrigger })}
+                >
+                  <SelectTrigger className="h-7 w-52">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRIGGERS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {rule.trigger === "idle" && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={rule.idleSeconds ?? 30}
+                      onChange={(e) =>
+                        patchRule(i, { idleSeconds: Math.max(1, Number(e.target.value) || 0) })
+                      }
+                      className="h-7 w-16"
+                      aria-label="Idle seconds"
+                    />
+                    s
+                  </div>
+                )}
+                <span className="text-xs text-muted-foreground">→</span>
+                <Select value={rule.profile} onValueChange={(v) => patchRule(i, { profile: v })}>
+                  <SelectTrigger className="h-7 w-40">
+                    <SelectValue placeholder="Profile…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {settings.profiles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {i === liveRuleIndex && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                    live
+                  </span>
+                )}
+                <div className="ml-auto flex items-center">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => moveRule(i, -1)}
+                    disabled={i === 0}
+                    aria-label="Move up"
+                  >
+                    <ArrowUp size={14} />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => moveRule(i, 1)}
+                    disabled={i === settings.rules.length - 1}
+                    aria-label="Move down"
+                  >
+                    <ArrowDown size={14} />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeRule(i)}
+                    aria-label="Remove rule"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {settings.rules.length === 0 && (
+              <p className="text-xs text-muted-foreground">No rules — the game stays untouched.</p>
+            )}
+          </div>
+        </Panel>
+
+        {(error || message) && (
+          <p className={`text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>
+            {error || message}
+          </p>
+        )}
+      </TabPanel.Entry>
+    </TabPanel>
   );
 }

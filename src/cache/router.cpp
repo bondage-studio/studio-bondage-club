@@ -198,6 +198,7 @@ RouteAction PolicyRouter::match(const Url& target, const Url& base) const {
         action.key_mode = r.key_mode;
         action.cache_control = r.cache_control;
         action.force_cache = r.force_cache;
+        action.cacheable_status_codes = r.cacheable_status_codes;
         action.version = r.version;
         action.key_pattern = r.key_pattern;
         action.key_template = r.key_template;

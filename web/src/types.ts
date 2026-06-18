@@ -35,6 +35,11 @@ export interface CacheRule {
    * version-independent key (ETag revalidation on change, e.g. the game body).
    */
   versionRevalidate?: boolean;
+  /**
+   * Cacheable HTTP status codes for this rule. Empty/omitted inherits the global
+   * cache.cacheableStatusCodes (which itself defaults to {200, 204, 404}).
+   */
+  cacheableStatusCodes?: number[];
 }
 
 export interface CacheConfig {
@@ -43,6 +48,7 @@ export interface CacheConfig {
   maxSizeBytes: number;
   stores?: StoreConfig[];
   rules?: CacheRule[];
+  cacheableStatusCodes?: number[];
 }
 
 export interface PackageConfig {
@@ -183,10 +189,76 @@ export interface StoreStat {
   stats: CacheStats;
 }
 
+/**
+ * Cache outcome buckets, derived server-side from the X-Studio-Cache status:
+ * - hit: served from cache without contacting upstream (HIT / STALE-HEAD)
+ * - revalidated: 304 — cached body reused, only headers refetched
+ * - miss: body fetched from upstream and cached
+ * - uncached: body fetched but not cacheable (MISS-UNCACHED)
+ * - stale: stale cache served after an upstream failure
+ * - bypass: request skipped the cache entirely (BYPASS-*)
+ */
+export const CACHE_OUTCOMES = [
+  "hit",
+  "revalidated",
+  "miss",
+  "uncached",
+  "stale",
+  "bypass",
+] as const;
+
+export type CacheOutcome = (typeof CACHE_OUTCOMES)[number];
+
+export type CacheOutcomeMap = Record<CacheOutcome, number>;
+
+/** One per-host (or aggregate) traffic row. `host` is absent on the total row. */
+export interface CacheTrafficRow {
+  host?: string;
+  counts: CacheOutcomeMap;
+  bytes: CacheOutcomeMap;
+  requests: number;
+}
+
+/** Per-host cache hit-rate / bandwidth telemetry since the last reset. */
+export interface CacheTraffic {
+  /** Epoch-ms when the current measurement window opened (last reset). */
+  sinceMs: number;
+  /** Epoch-ms when the snapshot was produced. */
+  nowMs: number;
+  total: CacheTrafficRow;
+  /** Rows sorted by request volume, descending. */
+  hosts: CacheTrafficRow[];
+}
+
+/** One resource (URL) within a host's drill-down, with last-seen debug fields. */
+export interface CacheResourceRow {
+  url: string;
+  counts: CacheOutcomeMap;
+  bytes: CacheOutcomeMap;
+  requests: number;
+  /** Last HTTP status code observed for this URL (0 if unknown). */
+  lastStatus: number;
+  /** Epoch-ms of the most recent request for this URL. */
+  lastMs: number;
+}
+
+/** On-demand per-host breakdown (the `cache.trafficDetail` RPC). */
+export interface CacheTrafficDetail {
+  host: string;
+  sinceMs: number;
+  nowMs: number;
+  /** Host aggregate (same shape as a traffic row). */
+  total: CacheTrafficRow;
+  /** Resources sorted by request volume, descending. */
+  resources: CacheResourceRow[];
+}
+
 export interface StatsEvent {
   type: "stats";
   stores: StoreStat[];
   total: CacheStats;
+  /** Present on every frame once the backend supports traffic telemetry. */
+  traffic?: CacheTraffic;
 }
 
 export interface CacheVersion {

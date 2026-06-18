@@ -19,6 +19,7 @@ void to_json(nlohmann::ordered_json& j, const CacheRule& r) {
     if (!r.key_pattern.empty()) j["keyPattern"] = r.key_pattern;
     if (!r.key_template.empty()) j["keyTemplate"] = r.key_template;
     if (r.version_revalidate) j["versionRevalidate"] = true;
+    if (!r.cacheable_status_codes.empty()) j["cacheableStatusCodes"] = r.cacheable_status_codes;
 }
 
 void from_json(const nlohmann::ordered_json& j, CacheRule& r) {
@@ -39,6 +40,8 @@ void from_json(const nlohmann::ordered_json& j, CacheRule& r) {
     if (auto it = j.find("keyTemplate"); it != j.end()) r.key_template = it->get<std::string>();
     if (auto it = j.find("versionRevalidate"); it != j.end())
         r.version_revalidate = it->get<bool>();
+    if (auto it = j.find("cacheableStatusCodes"); it != j.end() && !it->is_null())
+        r.cacheable_status_codes = it->get<std::vector<int>>();
 }
 
 }  // namespace sbc::cache

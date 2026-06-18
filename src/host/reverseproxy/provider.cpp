@@ -14,6 +14,7 @@
 #include "cache/key.hpp"
 #include "cache/leveldb_store.hpp"
 #include "cache/policy.hpp"
+#include "cache/traffic_stats.hpp"
 #include "cache/version.hpp"
 #include "common/error.hpp"
 #include "net/blocking_pool.hpp"
@@ -105,6 +106,13 @@ std::string read_whole_file(const fs::path& path) {
     return ss.str();
 }
 
+// A rule's cacheable-status override (if any) wins over the global default set.
+std::set<int> resolve_cacheable_statuses(const std::set<int>& global,
+                                         const std::vector<int>& rule_override) {
+    if (rule_override.empty()) return global;
+    return std::set<int>(rule_override.begin(), rule_override.end());
+}
+
 class WriterSink : public net::BodySink {
 public:
     explicit WriterSink(cache::Writer* writer) : writer_(writer) {}
@@ -184,6 +192,16 @@ std::shared_ptr<Provider::Snapshot> Provider::build_snapshot(const config::Confi
                                        ? std::chrono::seconds(*sc.default_ttl_seconds)
                                        : snap->default_ttl;
         snap->store_max[sc.name] = sc.max_size_bytes > 0 ? sc.max_size_bytes : snap->default_max;
+    }
+
+    // Empty config list -> built-in default: cache OK (200), no-content (204) and
+    // not-found (404). Caching 404s stops the game's probe requests for missing
+    // asset variants (e.g. @nomap/...) from re-hitting upstream every time.
+    if (cfg.cache.cacheable_status_codes.empty()) {
+        snap->cacheable_statuses = {200, 204, 404};
+    } else {
+        snap->cacheable_statuses.insert(cfg.cache.cacheable_status_codes.begin(),
+                                        cfg.cache.cacheable_status_codes.end());
     }
     return snap;
 }
@@ -311,6 +329,14 @@ void Provider::schedule_touch(const std::shared_ptr<cache::Backend>& store, cons
     asio::post(ctx_.blocking->pool(), [s, k, now]() { s->touch(k, now); });
 }
 
+void Provider::record_traffic(const std::string& url, const std::string& cache_status,
+                              int status_code, std::int64_t bytes) const {
+    if (ctx_.traffic == nullptr) return;
+    auto u = Url::try_parse(url);
+    if (!u || u->host().empty()) return;
+    ctx_.traffic->record(u->host(), url, cache_status, status_code, bytes);
+}
+
 asio::awaitable<void> Provider::serve(server::Request& req, server::ResponseWriter& w) {
     auto snap = snapshot();
     Url target = target_url(snap->upstream, req);
@@ -408,10 +434,11 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
                 // Only revalidate-mode versions are recorded in metadata (and so
                 // surface in the versions/expire UI); immutable versions live in
                 // the key and need no tag.
-                co_return co_await fetch(snap, target, key, store, ttl, max_bytes,
-                                         action.force_cache, action.cache_control,
-                                         action.version_revalidate ? version : std::string(),
-                                         refreshed, req);
+                co_return co_await fetch(
+                    snap, target, key, store, ttl, max_bytes, action.force_cache,
+                    resolve_cacheable_statuses(snap.cacheable_statuses, action.cacheable_status_codes),
+                    action.cache_control, action.version_revalidate ? version : std::string(),
+                    refreshed, req);
             });
     } catch (const std::exception& e) {
         fetch_error = e.what();
@@ -436,8 +463,9 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
 
 asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     const Snapshot& snap, Url target, std::string key, std::shared_ptr<cache::Backend> store,
-    std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache, std::string cache_control,
-    std::string version, std::optional<Metadata> cached, server::Request& req) {
+    std::chrono::seconds ttl, std::int64_t max_bytes, bool force_cache,
+    std::set<int> cacheable_statuses, std::string cache_control, std::string version,
+    std::optional<Metadata> cached, server::Request& req) {
     net::ClientRequest creq;
     creq.method = "GET";
     creq.target = target;
@@ -501,8 +529,9 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
     meta.expires_at = cache::expiration(now, ttl);
     meta.version = version;
 
-    bool cacheable = cache::response_cacheable("GET", creq.headers, resp.status, resp.headers) ||
-                     (force_cache && resp.status == 200);
+    bool cacheable = cache::response_cacheable("GET", creq.headers, resp.status, resp.headers,
+                                               cacheable_statuses) ||
+                     (force_cache && cacheable_statuses.count(resp.status));
     if (cacheable) {
         Metadata committed = co_await net::run_blocking(
             *ctx_.blocking, [wptr, meta]() { return wptr->commit(meta); });
@@ -538,7 +567,11 @@ asio::awaitable<void> Provider::proxy_pass(server::Request& req, server::Respons
     if (method_has_body(req.method)) creq.body = req.body;
 
     bool is_head = req.is_head();
-    net::HeadHandler on_head = [&w, cs = cache_status,
+    // Record once the upstream headers arrive: status + Content-Length are known
+    // there. Bypassed bodies stream straight through (not buffered), so the byte
+    // figure reflects the advertised Content-Length when present.
+    std::string turl = target.string();
+    net::HeadHandler on_head = [this, &w, cs = cache_status, turl,
                                 is_head](const net::ClientResponse& resp) -> asio::awaitable<void> {
         (void)is_head;
         HeaderMap h;
@@ -553,6 +586,7 @@ asio::awaitable<void> Provider::proxy_pass(server::Request& req, server::Respons
             } catch (...) {
             }
         }
+        record_traffic(turl, cs, resp.status, clen.value_or(0));
         co_await w.send_header(resp.status, std::move(h), clen);
     };
 
@@ -581,6 +615,7 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
     std::string key = meta.key;
     std::string body = co_await net::run_blocking(*ctx_.blocking,
                                                   [store, key]() { return store->open_body(key); });
+    record_traffic(meta.url, cache_status, meta.status_code, static_cast<std::int64_t>(body.size()));
 
     HeaderMap h;
     for (const auto& e : meta.header.entries()) {
@@ -615,6 +650,8 @@ asio::awaitable<void> Provider::serve_result(server::Request& req, server::Respo
     fs::path path = result.temp_path;
     std::string body =
         co_await net::run_blocking(*ctx_.blocking, [path]() { return read_whole_file(path); });
+    record_traffic(result.temp_meta.url, result.cache_status, result.temp_meta.status_code,
+                   static_cast<std::int64_t>(body.size()));
 
     HeaderMap h;
     for (const auto& e : result.temp_meta.header.entries()) {
@@ -684,10 +721,12 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
                     if (refreshed && refreshed->fresh(Clock::now()) && !reval) {
                         co_return make_committed(store, *refreshed, "HIT", action.cache_control);
                     }
-                    co_return co_await fetch(*snap, target, key, store, ttl, max_bytes,
-                                             action.force_cache, action.cache_control,
-                                             action.version_revalidate ? version : std::string(),
-                                             refreshed, fetch_req);
+                    co_return co_await fetch(
+                        *snap, target, key, store, ttl, max_bytes, action.force_cache,
+                        resolve_cacheable_statuses(snap->cacheable_statuses,
+                                                   action.cacheable_status_codes),
+                        action.cache_control, action.version_revalidate ? version : std::string(),
+                        refreshed, fetch_req);
                 });
         } catch (const std::exception& e) {
             fetch_error = e.what();
@@ -716,6 +755,8 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
         doc.body =
             co_await net::run_blocking(*ctx_.blocking, [path]() { return read_whole_file(path); });
     }
+    record_traffic(doc.url, doc.cache_status, doc.status_code,
+                   static_cast<std::int64_t>(doc.body.size()));
     co_return doc;
 }
 

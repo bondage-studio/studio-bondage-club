@@ -34,10 +34,10 @@ bool request_forces_revalidation(const HeaderMap& req_headers) {
 }
 
 bool response_cacheable(const std::string& method, const HeaderMap& req_headers, int status,
-                        const HeaderMap& resp_headers) {
+                        const HeaderMap& resp_headers, const std::set<int>& cacheable_statuses) {
     if (method != "GET") return false;
     if (!req_headers.get("Range").empty()) return false;
-    if (status != 200) return false;
+    if (!cacheable_statuses.count(status)) return false;
     if (!resp_headers.get("Content-Range").empty()) return false;
     if (!resp_headers.get("Content-Encoding").empty()) return false;
     if (!resp_headers.values("Set-Cookie").empty()) return false;

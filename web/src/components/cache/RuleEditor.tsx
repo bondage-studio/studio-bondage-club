@@ -4,7 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Window } from "@/components/ui/window";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatusCodesField } from "@/components/cache/StatusCodesField";
 import type { CacheRule, StoreConfig } from "@/types";
 
 interface RuleEditorProps {
@@ -134,6 +141,19 @@ export function RuleEditor({ initial, stores, onSave, onClose }: RuleEditorProps
               placeholder="public, max-age=31536000, immutable"
               spellCheck={false}
             />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Cacheable status codes</Label>
+            <StatusCodesField
+              value={form.cacheableStatusCodes}
+              onChange={(codes) => set({ cacheableStatusCodes: codes.length ? codes : undefined })}
+              placeholder="inherit global (200 204 404)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Override which HTTP status codes this rule caches. Leave empty to inherit the global
+              setting.
+            </p>
           </div>
 
           <div className="border-t pt-3">

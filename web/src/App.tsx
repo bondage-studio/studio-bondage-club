@@ -7,7 +7,6 @@ import {
   ScrollText,
   Server,
   Settings,
-  SlidersHorizontal,
   Smartphone,
   Wifi,
   Zap,
@@ -22,7 +21,6 @@ import { SectionBar } from "@/components/shared/SectionBar";
 import { CacheTab } from "@/components/tabs/CacheTab";
 import { ConnectionTab } from "@/components/tabs/ConnectionTab";
 import { GameServerTab } from "@/components/tabs/GameServerTab";
-import { GameSettingsTab } from "@/components/tabs/GameSettingsTab";
 import { AndroidTab } from "@/components/tabs/AndroidTab";
 import { DesktopTab } from "@/components/tabs/DesktopTab";
 import { ModeTab } from "@/components/tabs/ModeTab";
@@ -98,12 +96,6 @@ const allPages: PageDef[] = [
     icon: <Gamepad2 size={16} />,
     label: "Game Server",
     description: "Run the Bondage Club game server locally for offline play.",
-  },
-  {
-    id: "gamesettings",
-    icon: <SlidersHorizontal size={16} />,
-    label: "Game Settings",
-    description: "Tune the embedded game server's limits, intervals and timeouts.",
   },
   {
     id: "mode",
@@ -281,9 +273,11 @@ function App() {
 
   function sectionDirty(scope: PanelTab): boolean {
     if (SELF_MANAGED_TABS.includes(scope) || !snapshot || !form) return false;
-    return (
-      JSON.stringify(scopeSlice(form, scope as ConfigScopeName)) !==
-      JSON.stringify(scopeSlice(snapshot.config, scope as ConfigScopeName))
+    const scopes: ConfigScopeName[] =
+      scope === "gameserver" ? ["gameserver", "gamesettings"] : [scope as ConfigScopeName];
+    return scopes.some(
+      (s) =>
+        JSON.stringify(scopeSlice(form, s)) !== JSON.stringify(scopeSlice(snapshot.config, s)),
     );
   }
 
@@ -301,8 +295,8 @@ function App() {
     }
   }
 
-  // Re-pull just one section's saved values, preserving other sections' edits.
-  async function refreshScope(scope: ConfigScopeName) {
+  // Re-pull one or more sections' saved values, preserving other sections' edits.
+  async function refreshScopes(scopes: ConfigScopeName[]) {
     setBusy(true);
     setError("");
     try {
@@ -311,7 +305,7 @@ function App() {
       setForm((prev) => {
         if (!prev) return fresh.config;
         const draft = structuredClone(prev);
-        copyScope(draft, fresh.config, scope);
+        for (const scope of scopes) copyScope(draft, fresh.config, scope);
         return draft;
       });
     } catch (err) {
@@ -319,6 +313,10 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function refreshScope(scope: ConfigScopeName) {
+    return refreshScopes([scope]);
   }
 
   async function saveScope(scope: ConfigScopeName, migrate?: boolean) {
@@ -356,13 +354,43 @@ function App() {
     void saveScope("cache");
   }
 
+  async function saveGameServerScopes(migrate?: boolean) {
+    if (!form) return;
+    setBusy(true);
+    setError("");
+    try {
+      const [resp1, resp2] = await Promise.all([
+        saveConfigScope(
+          "gameserver",
+          scopeSlice(form, "gameserver"),
+          migrate ? { migrate: true } : undefined,
+        ),
+        saveConfigScope("gamesettings", scopeSlice(form, "gamesettings")),
+      ]);
+      const fresh = await loadConfig();
+      setSnapshot(fresh);
+      setForm((prev) => {
+        if (!prev) return fresh.config;
+        const draft = structuredClone(prev);
+        copyScope(draft, fresh.config, "gameserver");
+        copyScope(draft, fresh.config, "gamesettings");
+        return draft;
+      });
+      setMessage(tierMessages[Math.max(resp1.updateTier, resp2.updateTier)] ?? "Saved");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function handleSaveGameServer() {
     if (!form || !snapshot) return;
     if (form.gameServerStoragePath !== snapshot.config.gameServerStoragePath) {
       setMigrateScope("gameserver");
       return;
     }
-    void saveScope("gameserver");
+    void saveGameServerScopes();
   }
 
   async function handleClearCache() {
@@ -547,7 +575,13 @@ function App() {
                     <SectionBar
                       dirty={sectionDirty(tab)}
                       busy={busy}
-                      onRefresh={() => void refreshScope(tab as ConfigScopeName)}
+                      onRefresh={() =>
+                      void (
+                        tab === "gameserver"
+                          ? refreshScopes(["gameserver", "gamesettings"])
+                          : refreshScope(tab as ConfigScopeName)
+                      )
+                    }
                       onSave={
                         tab === "cache"
                           ? handleSaveCache
@@ -597,9 +631,6 @@ function App() {
                             onSwitchMode={switchServerMode}
                             onChange={updateConfig}
                           />
-                        )}
-                        {tab === "gamesettings" && (
-                          <GameSettingsTab form={form} onChange={updateConfig} />
                         )}
                         {tab === "mode" && (
                           <ModeTab form={form} snapshot={snapshot} onChange={updateConfig} />
@@ -669,7 +700,7 @@ function App() {
           }
           onChoose={(migrate) => {
             setMigrateScope(null);
-            void saveScope("gameserver", migrate);
+            void saveGameServerScopes(migrate);
           }}
           onClose={() => setMigrateScope(null)}
         />

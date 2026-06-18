@@ -90,6 +90,24 @@ SBC_TEST(router_carries_version_and_key_rewrite) {
     CHECK(g.version_revalidate);
 }
 
+SBC_TEST(router_carries_cacheable_status_codes) {
+    CacheRule with_codes;
+    with_codes.host = "h.example";
+    with_codes.cacheable_status_codes = {200, 404};
+    CacheRule without;
+    without.path_prefix = "/x/";
+
+    PolicyRouter router({with_codes, without});
+    Url base = Url::parse("https://h.example/");
+
+    auto a = router.match(Url::parse("https://h.example/whatever"), base);
+    CHECK((a.cacheable_status_codes == std::vector<int>{200, 404}));
+
+    // A rule without an override carries an empty list (provider falls back to global).
+    auto b = router.match(Url::parse("https://other.example/x/y"), base);
+    CHECK(b.cacheable_status_codes.empty());
+}
+
 SBC_TEST(router_rejects_invalid_version_regex) {
     CacheRule bad;
     bad.host = "h.example";

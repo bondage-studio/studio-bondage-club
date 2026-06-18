@@ -1,5 +1,6 @@
 #include <atomic>
 #include <filesystem>
+#include <set>
 
 #include "cache/key.hpp"
 #include "cache/leveldb_store.hpp"
@@ -45,31 +46,39 @@ SBC_TEST(cache_key_is_sha256_hex) {
 }
 
 SBC_TEST(policy_response_cacheable) {
+    const std::set<int> statuses{200, 204, 404};
     HeaderMap req;
     HeaderMap resp;
     resp.set("Content-Type", "text/javascript");
-    CHECK(response_cacheable("GET", req, 200, resp));
-    CHECK(!response_cacheable("POST", req, 200, resp));
-    CHECK(!response_cacheable("GET", req, 302, resp));
+    CHECK(response_cacheable("GET", req, 200, resp, statuses));
+    CHECK(!response_cacheable("POST", req, 200, resp, statuses));
+    CHECK(!response_cacheable("GET", req, 302, resp, statuses));
 
     HeaderMap with_cookie = resp;
     with_cookie.add("Set-Cookie", "a=b");
-    CHECK(!response_cacheable("GET", req, 200, with_cookie));
+    CHECK(!response_cacheable("GET", req, 200, with_cookie, statuses));
 
     HeaderMap no_store = resp;
     no_store.set("Cache-Control", "no-store");
-    CHECK(!response_cacheable("GET", req, 200, no_store));
+    CHECK(!response_cacheable("GET", req, 200, no_store, statuses));
 
     HeaderMap vary_ae = resp;
     vary_ae.set("Vary", "Accept-Encoding");
-    CHECK(response_cacheable("GET", req, 200, vary_ae));
+    CHECK(response_cacheable("GET", req, 200, vary_ae, statuses));
     HeaderMap vary_cookie = resp;
     vary_cookie.set("Vary", "Cookie");
-    CHECK(!response_cacheable("GET", req, 200, vary_cookie));
+    CHECK(!response_cacheable("GET", req, 200, vary_cookie, statuses));
 
     HeaderMap range_req;
     range_req.set("Range", "bytes=0-10");
-    CHECK(!response_cacheable("GET", range_req, 200, resp));
+    CHECK(!response_cacheable("GET", range_req, 200, resp, statuses));
+
+    // Configurable statuses: 204/404 cache when listed, and a status not in the
+    // set (e.g. 200) is rejected when the caller restricts the set.
+    CHECK(response_cacheable("GET", req, 204, resp, statuses));
+    CHECK(response_cacheable("GET", req, 404, resp, statuses));
+    CHECK(!response_cacheable("GET", req, 404, resp, std::set<int>{200}));
+    CHECK(!response_cacheable("GET", req, 200, resp, std::set<int>{404}));
 }
 
 SBC_TEST(policy_forces_revalidation_and_expiration) {

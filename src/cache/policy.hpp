@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "cache/metadata.hpp"
@@ -13,11 +14,11 @@ namespace sbc::cache {
 // fresh cache entry (Cache-Control: no-cache / max-age=0, or Pragma: no-cache).
 bool request_forces_revalidation(const HeaderMap& req_headers);
 
-// response_cacheable allows GET 200 responses without Range/Content-Range,
-// Content-Encoding, Set-Cookie, Cache-Control: no-store, or Vary values other
-// than Accept-Encoding.
+// response_cacheable allows GET responses whose status is in `cacheable_statuses`
+// (e.g. {200, 204, 404}) and that carry no Range/Content-Range, Content-Encoding,
+// Set-Cookie, Cache-Control: no-store, or Vary value other than Accept-Encoding.
 bool response_cacheable(const std::string& method, const HeaderMap& req_headers, int status,
-                        const HeaderMap& resp_headers);
+                        const HeaderMap& resp_headers, const std::set<int>& cacheable_statuses);
 
 // expiration returns the stale-after time. ttl <= 0 returns nullopt (never
 // expires).

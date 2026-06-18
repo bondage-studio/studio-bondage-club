@@ -1,5 +1,3 @@
-// skipValidation — no-op appearance validation/sanitization on the hot path.
-
 import { flags } from "../flags";
 import type { Optimization } from "../optimization";
 

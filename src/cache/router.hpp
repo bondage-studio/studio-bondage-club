@@ -28,6 +28,9 @@ struct CacheRule {
     std::string key_mode;
     std::string cache_control;
     bool force_cache = false;  // cache even when upstream says no-store
+    // Cacheable HTTP status codes for this rule. Empty -> inherit the global
+    // cache.cacheableStatusCodes (which itself defaults to {200, 204, 404}).
+    std::vector<int> cacheable_status_codes;
 
     // Version-aware caching (all optional). `version` extracts a version label
     // from the target URL ("query:<name>" or "re:<regexp>"); a mismatch with the
@@ -57,6 +60,8 @@ struct RouteAction {
     std::string key_mode;         // "path" uses upstream-relative path
     std::string cache_control;
     bool force_cache = false;  // bypass ResponseCacheable checks
+    // Per-rule cacheable status override; empty -> use the global default.
+    std::vector<int> cacheable_status_codes;
     std::string version;
     std::string key_pattern;
     std::string key_template;
