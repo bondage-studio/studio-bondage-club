@@ -27,9 +27,9 @@ struct ServerConfig {
     std::string address() const;
 };
 
-#define SBC_ServerConfig_FIELDS(X)              \
-    X(host, host, ALWAYS)                       \
-    X(port, port, ALWAYS)                       \
+#define SBC_ServerConfig_FIELDS(X) \
+    X(host, host, ALWAYS)          \
+    X(port, port, ALWAYS)          \
     X(adminBasePath, admin_base_path, ALWAYS)
 SBC_DEFINE_ALLOWED_KEYS(ServerConfig)
 
@@ -41,10 +41,10 @@ struct StoreConfig {
     std::optional<int> default_ttl_seconds;  // nullopt -> inherit global
 };
 
-#define SBC_StoreConfig_FIELDS(X)                    \
-    X(name, name, ALWAYS)                            \
-    X(dir, dir, OMIT_EMPTY)                          \
-    X(maxSizeBytes, max_size_bytes, OMIT_ZERO)       \
+#define SBC_StoreConfig_FIELDS(X)              \
+    X(name, name, ALWAYS)                      \
+    X(dir, dir, OMIT_EMPTY)                    \
+    X(maxSizeBytes, max_size_bytes, OMIT_ZERO) \
     X(defaultTTLSeconds, default_ttl_seconds, OMIT_NULL)
 SBC_DEFINE_ALLOWED_KEYS(StoreConfig)
 
@@ -52,17 +52,22 @@ struct CacheConfig {
     std::string dir;
     int default_ttl_seconds = 0;
     std::int64_t max_size_bytes = 0;
+    // Stale-on-error grace: when an upstream refresh fails, how long past an entry's
+    // expiry it may still be served. -1 = unbounded (always), 0 = disabled, >0 =
+    // window in seconds.
+    int stale_if_error_seconds = -1;
     std::vector<StoreConfig> stores;
     std::vector<cache::CacheRule> rules;
     std::vector<int> cacheable_status_codes;
 };
 
-#define SBC_CacheConfig_FIELDS(X)                                 \
-    X(dir, dir, ALWAYS)                                           \
-    X(defaultTTLSeconds, default_ttl_seconds, ALWAYS)             \
-    X(maxSizeBytes, max_size_bytes, ALWAYS)                       \
-    X(stores, stores, OMIT_EMPTY)                                 \
-    X(rules, rules, OMIT_EMPTY)                                   \
+#define SBC_CacheConfig_FIELDS(X)                          \
+    X(dir, dir, ALWAYS)                                    \
+    X(defaultTTLSeconds, default_ttl_seconds, ALWAYS)      \
+    X(maxSizeBytes, max_size_bytes, ALWAYS)                \
+    X(staleIfErrorSeconds, stale_if_error_seconds, ALWAYS) \
+    X(stores, stores, OMIT_EMPTY)                          \
+    X(rules, rules, OMIT_EMPTY)                            \
     X(cacheableStatusCodes, cacheable_status_codes, OMIT_EMPTY)
 SBC_DEFINE_ALLOWED_KEYS(CacheConfig)
 
@@ -71,8 +76,8 @@ struct PackageConfig {
     std::string manifest_url;
 };
 
-#define SBC_PackageConfig_FIELDS(X)             \
-    X(dir, dir, ALWAYS)                         \
+#define SBC_PackageConfig_FIELDS(X) \
+    X(dir, dir, ALWAYS)             \
     X(manifestUrl, manifest_url, ALWAYS)
 SBC_DEFINE_ALLOWED_KEYS(PackageConfig)
 
@@ -104,29 +109,29 @@ struct GameServerConfig {
     int ownership_notes_max_len = 4000;
 };
 
-#define SBC_GameServerConfig_FIELDS(X)                              \
-    X(pingIntervalMs, ping_interval_ms, ALWAYS)                     \
-    X(pingTimeoutMs, ping_timeout_ms, ALWAYS)                       \
-    X(maxPayloadBytes, max_payload_bytes, ALWAYS)                   \
-    X(messageRatePerSec, message_rate_per_sec, ALWAYS)              \
-    X(ipConnectionLimit, ip_connection_limit, ALWAYS)               \
-    X(ipConnectionRatePerSec, ip_connection_rate_per_sec, ALWAYS)   \
-    X(accountCreatePerDay, account_create_per_day, ALWAYS)          \
-    X(accountCreatePerHour, account_create_per_hour, ALWAYS)        \
-    X(loginPaceMs, login_pace_ms, ALWAYS)                           \
-    X(loginQueueThreshold, login_queue_threshold, ALWAYS)           \
-    X(pbkdf2Iterations, pbkdf2_iterations, ALWAYS)                  \
-    X(passwordResetThrottleMs, password_reset_throttle_ms, ALWAYS)  \
-    X(relationshipDelayMs, relationship_delay_ms, ALWAYS)           \
-    X(serverInfoIntervalSec, server_info_interval_sec, ALWAYS)      \
-    X(delayedFlushIntervalSec, delayed_flush_interval_sec, ALWAYS)  \
-    X(searchMaxResults, search_max_results, ALWAYS)                 \
-    X(roomLimitDefault, room_limit_default, ALWAYS)                 \
-    X(roomLimitMin, room_limit_min, ALWAYS)                         \
-    X(roomLimitMax, room_limit_max, ALWAYS)                         \
-    X(descriptionMaxLen, description_max_len, ALWAYS)               \
-    X(emailMaxLen, email_max_len, ALWAYS)                           \
-    X(nameMaxLen, name_max_len, ALWAYS)                             \
+#define SBC_GameServerConfig_FIELDS(X)                             \
+    X(pingIntervalMs, ping_interval_ms, ALWAYS)                    \
+    X(pingTimeoutMs, ping_timeout_ms, ALWAYS)                      \
+    X(maxPayloadBytes, max_payload_bytes, ALWAYS)                  \
+    X(messageRatePerSec, message_rate_per_sec, ALWAYS)             \
+    X(ipConnectionLimit, ip_connection_limit, ALWAYS)              \
+    X(ipConnectionRatePerSec, ip_connection_rate_per_sec, ALWAYS)  \
+    X(accountCreatePerDay, account_create_per_day, ALWAYS)         \
+    X(accountCreatePerHour, account_create_per_hour, ALWAYS)       \
+    X(loginPaceMs, login_pace_ms, ALWAYS)                          \
+    X(loginQueueThreshold, login_queue_threshold, ALWAYS)          \
+    X(pbkdf2Iterations, pbkdf2_iterations, ALWAYS)                 \
+    X(passwordResetThrottleMs, password_reset_throttle_ms, ALWAYS) \
+    X(relationshipDelayMs, relationship_delay_ms, ALWAYS)          \
+    X(serverInfoIntervalSec, server_info_interval_sec, ALWAYS)     \
+    X(delayedFlushIntervalSec, delayed_flush_interval_sec, ALWAYS) \
+    X(searchMaxResults, search_max_results, ALWAYS)                \
+    X(roomLimitDefault, room_limit_default, ALWAYS)                \
+    X(roomLimitMin, room_limit_min, ALWAYS)                        \
+    X(roomLimitMax, room_limit_max, ALWAYS)                        \
+    X(descriptionMaxLen, description_max_len, ALWAYS)              \
+    X(emailMaxLen, email_max_len, ALWAYS)                          \
+    X(nameMaxLen, name_max_len, ALWAYS)                            \
     X(ownershipNotesMaxLen, ownership_notes_max_len, ALWAYS)
 SBC_DEFINE_ALLOWED_KEYS(GameServerConfig)
 
@@ -159,10 +164,10 @@ struct DesktopConfig {
     bool remember_window_size = true;
 };
 
-#define SBC_DesktopConfig_FIELDS(X)                       \
+#define SBC_DesktopConfig_FIELDS(X)                        \
     X(hardwareAcceleration, hardware_acceleration, ALWAYS) \
-    X(windowWidth, window_width, ALWAYS)                  \
-    X(windowHeight, window_height, ALWAYS)                \
+    X(windowWidth, window_width, ALWAYS)                   \
+    X(windowHeight, window_height, ALWAYS)                 \
     X(rememberWindowSize, remember_window_size, ALWAYS)
 SBC_DEFINE_ALLOWED_KEYS(DesktopConfig)
 #endif
@@ -194,16 +199,16 @@ struct Config {
 
 // Conditionally-compiled members (android) are appended by hand in config.cpp /
 // store.cpp under their build guards, so they are intentionally absent here.
-#define SBC_Config_FIELDS(X)                                  \
-    X(server, server, ALWAYS)                                 \
-    X(mode, mode, ALWAYS)                                     \
-    X(upstream, upstream, ALWAYS)                             \
-    X(gameServer, game_server, ALWAYS)                        \
-    X(socks5Proxy, socks5_proxy, ALWAYS)                      \
-    X(localGameServer, local_game_server, ALWAYS)             \
+#define SBC_Config_FIELDS(X)                                   \
+    X(server, server, ALWAYS)                                  \
+    X(mode, mode, ALWAYS)                                      \
+    X(upstream, upstream, ALWAYS)                              \
+    X(gameServer, game_server, ALWAYS)                         \
+    X(socks5Proxy, socks5_proxy, ALWAYS)                       \
+    X(localGameServer, local_game_server, ALWAYS)              \
     X(gameServerStoragePath, game_server_storage_path, ALWAYS) \
-    X(gameServerSettings, game_server_settings, ALWAYS)       \
-    X(cache, cache, ALWAYS)                                   \
+    X(gameServerSettings, game_server_settings, ALWAYS)        \
+    X(cache, cache, ALWAYS)                                    \
     X(package, package, ALWAYS)
 SBC_DEFINE_ALLOWED_KEYS(Config)
 

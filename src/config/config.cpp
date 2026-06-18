@@ -92,6 +92,8 @@ std::vector<cache::CacheRule> default_cache_rules() {
     // the R-number bumps so unchanged files 304 and carry over across releases.
     {
         cache::CacheRule r;
+        r.host = "bondage-europe.com";
+        r.path_pattern = "**";
         r.store = "assets";
         r.key_mode = "path";
         r.cache_control = "public, max-age=86400";
@@ -116,11 +118,12 @@ Config default_config() {
     c.server.port = 8080;
     c.server.admin_base_path = "/studio/";
     c.mode = kModeReverseProxy;
-    c.upstream = "https://www.bondageprojects.elementfx.com/R129/BondageClub/";
+    c.upstream = "https://bondage-europe.com/R129/BondageClub/";
     c.game_server = "https://bondage-club-server.herokuapp.com/";
     c.cache.dir = (base_cache / "http-cache").string();
     c.cache.default_ttl_seconds = 0;
     c.cache.max_size_bytes = 5LL * 1024 * 1024 * 1024;
+    c.cache.stale_if_error_seconds = -1;
     c.cache.stores = default_cache_stores();
     c.cache.rules = default_cache_rules();
     c.package.dir = (base_config / "packages").string();
@@ -209,6 +212,9 @@ void Config::validate() const {
         throw ValidationError("cache defaultTTLSeconds cannot be negative");
     }
     if (cache.max_size_bytes < 0) throw ValidationError("cache maxSizeBytes cannot be negative");
+    if (cache.stale_if_error_seconds < -1) {
+        throw ValidationError("cache staleIfErrorSeconds must be >= -1");
+    }
 
     for (int code : cache.cacheable_status_codes) {
         if (code < 100 || code > 599) {

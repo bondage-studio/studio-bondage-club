@@ -65,6 +65,7 @@ private:
         std::unordered_map<std::string, std::chrono::seconds> store_ttl;
         std::unordered_map<std::string, std::int64_t> store_max;
         std::set<int> cacheable_statuses;
+        int stale_if_error_seconds = -1;
     };
 
     std::shared_ptr<const Snapshot> snapshot() const;

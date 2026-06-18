@@ -111,4 +111,12 @@ bool response_private(const HeaderMap& resp_headers) {
     return parse_cache_control(resp_headers.values("Cache-Control")).count("private") != 0;
 }
 
+bool stale_if_error_servable(std::optional<TimePoint> expires_at, TimePoint now,
+                             int stale_if_error_seconds) {
+    if (stale_if_error_seconds < 0) return true;    // unbounded
+    if (stale_if_error_seconds == 0) return false;  // disabled
+    if (!expires_at.has_value()) return true;       // never expires -> never "too stale"
+    return now <= *expires_at + std::chrono::seconds(stale_if_error_seconds);
+}
+
 }  // namespace sbc::cache

@@ -37,4 +37,14 @@ std::optional<TimePoint> upstream_expiry(TimePoint now, const HeaderMap& resp_he
 // i.e. a shared cache must not store it. (no-store is handled by response_cacheable.)
 bool response_private(const HeaderMap& resp_headers);
 
+// stale_if_error_servable reports whether a cached entry may be served as a
+// stale-on-error fallback when the upstream refresh fails, given the configured
+// grace window `stale_if_error_seconds`:
+//   < 0  -> always (unbounded);
+//   == 0 -> never (return the upstream error instead);
+//   > 0  -> only while now is within `stale_if_error_seconds` past expires_at.
+// An entry that never expires (expires_at == nullopt) is always servable.
+bool stale_if_error_servable(std::optional<TimePoint> expires_at, TimePoint now,
+                             int stale_if_error_seconds);
+
 }  // namespace sbc::cache

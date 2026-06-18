@@ -143,6 +143,26 @@ SBC_TEST(policy_upstream_expiry) {
     CHECK(!response_private(maxage));
 }
 
+SBC_TEST(policy_stale_if_error_servable) {
+    auto now = Clock::now();
+    auto expired = now - std::chrono::seconds(100);  // stale 100s ago
+    auto fresh = now + std::chrono::seconds(100);
+
+    // Unbounded (-1): always servable, however stale.
+    CHECK(stale_if_error_servable(expired, now, -1));
+    CHECK(stale_if_error_servable(std::nullopt, now, -1));
+
+    // Disabled (0): never servable.
+    CHECK(!stale_if_error_servable(expired, now, 0));
+    CHECK(!stale_if_error_servable(fresh, now, 0));
+
+    // Window: servable while within `seconds` past expiry, then not.
+    CHECK(stale_if_error_servable(expired, now, 200));      // 100s stale, 200s grace
+    CHECK(!stale_if_error_servable(expired, now, 50));      // 100s stale, 50s grace
+    CHECK(stale_if_error_servable(fresh, now, 10));         // not even expired yet
+    CHECK(stale_if_error_servable(std::nullopt, now, 10));  // never expires
+}
+
 SBC_TEST(leveldb_store_roundtrip) {
     auto dir = make_temp_dir("store");
     auto store = LevelDbStore::open("default", dir.string());

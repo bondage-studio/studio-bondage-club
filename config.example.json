@@ -8,57 +8,86 @@
   "upstream": "https://bondage-europe.com/R129/BondageClub/",
   "gameServer": "https://bondage-club-server.herokuapp.com/",
   "socks5Proxy": "",
+  "localGameServer": false,
+  "gameServerStoragePath": "",
+  "gameServerSettings": {
+    "pingIntervalMs": 50000,
+    "pingTimeoutMs": 30000,
+    "maxPayloadBytes": 180000,
+    "messageRatePerSec": 20,
+    "ipConnectionLimit": 64,
+    "ipConnectionRatePerSec": 2,
+    "accountCreatePerDay": 12,
+    "accountCreatePerHour": 4,
+    "loginPaceMs": 50,
+    "loginQueueThreshold": 16,
+    "pbkdf2Iterations": 100000,
+    "passwordResetThrottleMs": 5000,
+    "relationshipDelayMs": 604800000,
+    "serverInfoIntervalSec": 60,
+    "delayedFlushIntervalSec": 300,
+    "searchMaxResults": 240,
+    "roomLimitDefault": 10,
+    "roomLimitMin": 2,
+    "roomLimitMax": 20,
+    "descriptionMaxLen": 300,
+    "emailMaxLen": 100,
+    "nameMaxLen": 20,
+    "ownershipNotesMaxLen": 4000
+  },
   "cache": {
     "dir": "./run/cache",
     "defaultTTLSeconds": 0,
     "maxSizeBytes": 5368709120,
+    "staleIfErrorSeconds": -1,
     "stores": [
       {
-        "name": "assets",
-        "maxSizeBytes": 8589934592
+        "name": "assets"
       },
       {
-        "name": "mods",
-        "maxSizeBytes": 2147483648
+        "name": "echo"
+      },
+      {
+        "name": "mpa"
       }
     ],
     "rules": [
       {
         "host": "sugarchain-studio.github.io",
+        "store": "echo",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "forceCache": true,
         "version": "query:v",
         "keyPattern": "re:^/(echo-(?:clothing|activity)-ext)/(.*)$",
-        "keyTemplate": "$1/$2",
-        "forceCache": true,
-        "cacheControl": "public, max-age=31536000, immutable",
-        "store": "mods"
+        "keyTemplate": "$1/$2"
       },
       {
         "host": "cdn.jsdelivr.net",
+        "store": "echo",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "forceCache": true,
         "version": "re:@([^/]+)/",
         "keyPattern": "re:^/gh/SugarChain-Studio/(echo-(?:clothing|activity)-ext)@[^/]+/(.*)$",
-        "keyTemplate": "$1/$2",
-        "forceCache": true,
-        "cacheControl": "public, max-age=31536000, immutable",
-        "store": "mods"
+        "keyTemplate": "$1/$2"
       },
       {
         "host": "mayathefoxy.github.io",
         "pathPrefix": "/MPA/assets/",
         "pathPattern": "re:\\.mp3$",
+        "store": "mpa",
         "keyMode": "path",
-        "forceCache": true,
         "cacheControl": "public, max-age=31536000, immutable",
-        "store": "mods"
+        "forceCache": true
       },
       {
         "host": "bondage-europe.com",
         "pathPattern": "**",
+        "store": "assets",
         "keyMode": "path",
-        "forceCache": true,
         "cacheControl": "public, max-age=86400",
+        "forceCache": true,
         "version": "re:/(R\\d+)/BondageClub/",
-        "versionRevalidate": true,
-        "store": "assets"
+        "versionRevalidate": true
       }
     ]
   },

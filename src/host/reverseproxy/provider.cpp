@@ -275,6 +275,7 @@ std::shared_ptr<Provider::Snapshot> Provider::build_snapshot(const config::Confi
         snap->cacheable_statuses.insert(cfg.cache.cacheable_status_codes.begin(),
                                         cfg.cache.cacheable_status_codes.end());
     }
+    snap->stale_if_error_seconds = cfg.cache.stale_if_error_seconds;
     return snap;
 }
 
@@ -316,8 +317,9 @@ host::RuntimeStatus Provider::status() const {
     s.capabilities = {
         {"reverse-proxy-cache", "Reverse proxy cache", true,
          "Caches upstream static responses with ETag and Last-Modified revalidation."},
-        {"stale-on-error", "Stale fallback", true,
-         "Serves an existing cached file when the upstream request fails."},
+        {"stale-on-error", "Stale fallback", snap && snap->stale_if_error_seconds != 0,
+         "Serves an existing cached file when the upstream request fails "
+         "(window via cache.staleIfErrorSeconds)."},
         {"singleflight", "Concurrent request coalescing", true,
          "Only one upstream refresh runs for the same cache key at a time."},
         {"policy-routing", "Policy-based cache routing", has_rules,
@@ -534,7 +536,8 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
         // If the leader already began streaming to this client, the header is sent
         // and we cannot fall back to stale/502 — just drop the connection.
         if (w.header_sent()) co_return;
-        if (cached) {
+        if (cached && cache::stale_if_error_servable(cached->expires_at, Clock::now(),
+                                                     snap.stale_if_error_seconds)) {
             spdlog::warn("serving stale cache after upstream failure url={} error={}",
                          target.string(), fetch_error);
             co_await serve_entry(req, w, store, *cached, "STALE", action.cache_control, true);
@@ -930,7 +933,10 @@ asio::awaitable<host::HomepageDocument> Provider::fetch_homepage(const server::R
             failed = true;
         }
         if (failed) {
-            if (!cached) throw Error(fetch_error);
+            if (!cached || !cache::stale_if_error_servable(cached->expires_at, Clock::now(),
+                                                           snap->stale_if_error_seconds)) {
+                throw Error(fetch_error);
+            }
             result = make_committed(store, *cached, "STALE", action.cache_control);
         }
     }

@@ -91,7 +91,8 @@ SBC_TEST(emit_policy_omits_match_legacy_wire_format) {
     config::CacheConfig cc;
     cc.dir = "/c";
     nlohmann::ordered_json jc = cc;
-    CHECK(jc.dump() == R"({"dir":"/c","defaultTTLSeconds":0,"maxSizeBytes":0})");
+    CHECK(jc.dump() ==
+          R"({"dir":"/c","defaultTTLSeconds":0,"maxSizeBytes":0,"staleIfErrorSeconds":-1})");
 
     // GameServerConfig: every field always emitted, in declared order.
     nlohmann::ordered_json jg = config::GameServerConfig{};
