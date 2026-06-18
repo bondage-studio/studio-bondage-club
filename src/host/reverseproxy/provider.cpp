@@ -589,8 +589,16 @@ asio::awaitable<void> Provider::serve_target(server::Request& req, server::Respo
     }
 
     if (!req.headers.get("Range").empty() && !cached) {
-        co_await proxy_pass(req, w, snap, target, "BYPASS-RANGE");
-        co_return;
+        // A force_cache rule wants the whole object cached, so fall through to the
+        // normal fetch path: fetch() strips the client Range and pulls the full
+        // identity body into the cache. The leader streams a 200 to this client;
+        // subsequent requests (and seeks) slice the cached body into a 206 via
+        // serve_content. Without force_cache we still bypass, to avoid pulling a
+        // whole unmanaged large file just to satisfy one slice.
+        if (!action.force_cache) {
+            co_await proxy_pass(req, w, snap, target, "BYPASS-RANGE");
+            co_return;
+        }
     }
 
     std::shared_ptr<FetchResult> result;
