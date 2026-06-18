@@ -36,7 +36,14 @@ interface CapturedOnLoadHandler {
   registeredAfterLoad: boolean;
 }
 
+let cachedBootstrap: StudioBootstrap | null = null;
+let bootstrapRead = false;
+
 export function readStudioBootstrap(): StudioBootstrap | null {
+  if (bootstrapRead) {
+    return cachedBootstrap;
+  }
+  bootstrapRead = true;
   const script = document.getElementById(bootstrapScriptID);
   if (!script?.textContent) {
     setStatus(null, "error", "Studio bootstrap data is missing.");
@@ -51,6 +58,7 @@ export function readStudioBootstrap(): StudioBootstrap | null {
     setRpcToken(data.rpcToken ?? "");
     delete data.rpcToken;
     script.remove();
+    cachedBootstrap = data;
     return data;
   } catch (error) {
     console.error("Failed to parse Studio bootstrap data", error);

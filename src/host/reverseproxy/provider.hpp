@@ -34,6 +34,7 @@ struct FetchResult;
 class Provider : public host::Provider,
                  public host::HomepageProvider,
                  public host::RemoteProxyProvider,
+                 public host::CacheProbeProvider,
                  public host::StoreProvider,
                  public host::LiveUpdater,
                  public std::enable_shared_from_this<Provider> {
@@ -49,6 +50,10 @@ public:
         const server::Request& req) override;
     boost::asio::awaitable<void> serve_remote_http(server::Request& req, server::ResponseWriter& w,
                                                    const Url& target) override;
+    std::optional<host::CacheHit> probe_cache_hit(const server::Request& req,
+                                                  const Url* explicit_target) override;
+    std::string read_cache_body(const std::shared_ptr<cache::Backend>& store,
+                                const std::string& key) override;
     std::vector<std::shared_ptr<cache::Backend>> all_stores() override;
     void live_update(const config::Config& cfg) override;
 

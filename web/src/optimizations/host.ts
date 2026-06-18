@@ -9,12 +9,34 @@
 // without re-hooking: a disabled config just resolves to the all-off feature set.
 
 import { getOptimizationSettings } from "@/api";
+import { toProxyURL } from "@/userscripts/metadata";
 
 import { dbg } from "./debug";
 import { installHooks } from "./registry";
 import { applySettings, startStateMachine } from "./state";
 
 let installed = false;
+
+// A RequestCache mode that asks to skip / revalidate the cache rather than reuse
+// a stored response.
+function isBypassCacheMode(mode: RequestCache | undefined): boolean {
+  return mode === "no-cache" || mode === "reload" || mode === "no-store";
+}
+
+function studioHostFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (!isBypassCacheMode(init?.cache)) {
+    return window.fetch(url, init);
+  }
+  const proxied = toProxyURL(url);
+  if (proxied === url) {
+    return window.fetch(url, init);
+  }
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Cache-Control")) {
+    headers.set("Cache-Control", "no-cache");
+  }
+  return window.fetch(proxied, { ...init, headers });
+}
 
 export function installOptimizationHost(): void {
   dbg("installOptimizationHost called");
@@ -34,6 +56,7 @@ export function installOptimizationHost(): void {
       version: "1.0",
       capabilities: ["modsdk"],
     },
+    fetch: (url, init) => studioHostFetch(url, init),
     onReady: (api) => {
       dbg("BMM onReady fired");
       void onBmmReady(api);
@@ -61,7 +84,8 @@ function resolveSdk(api: BmmApi): SdkLike | null {
     const raw = typeof sdk.get === "function" ? sdk.get() : null;
     if (raw && typeof raw.registerMod === "function") return raw;
   }
-  if (typeof bcModSdk !== "undefined" && typeof bcModSdk.registerMod === "function") return bcModSdk;
+  if (typeof bcModSdk !== "undefined" && typeof bcModSdk.registerMod === "function")
+    return bcModSdk;
   return null;
 }
 

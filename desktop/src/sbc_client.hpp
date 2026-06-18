@@ -59,11 +59,26 @@ public:
         bool& disable_default_handling) override {
         return this;
     }
+    // A main-frame navigation (reload, top-level load) replaces the page and its
+    // RPC transport, so tear down the live native session: it drops the old page's
+    // leaked subscription loops and guarantees the next page opens a fresh session.
+    bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                        CefRefPtr<CefRequest> request, bool user_gesture,
+                        bool is_redirect) override;
 
     // CefResourceRequestHandler
-    cef_return_value_t OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    cef_return_value_t OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser,
+                                            CefRefPtr<CefFrame> frame,
                                             CefRefPtr<CefRequest> request,
                                             CefRefPtr<CefCallback> callback) override;
+    // Returns a CacheResourceHandler when the request is a confirmed fresh cache
+    // HIT (served directly, bypassing the local-server loopback); otherwise null,
+    // letting the request take the normal rewritten-loopback path. Runs on the IO
+    // thread, after OnBeforeResourceLoad has rewritten cross-origin URLs onto the
+    // local origin.
+    CefRefPtr<CefResourceHandler> GetResourceHandler(CefRefPtr<CefBrowser> browser,
+                                                     CefRefPtr<CefFrame> frame,
+                                                     CefRefPtr<CefRequest> request) override;
 
 private:
     // Marshals one outbound RPC frame to the renderer. UI thread only.

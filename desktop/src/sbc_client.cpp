@@ -11,9 +11,13 @@
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 
+#include "common/http_util.hpp"
+#include "host/provider.hpp"
+#include "server/embedded_server.hpp"
+
+#include "cache_resource_handler.hpp"
 #include "notifier.hpp"
 #include "sbc_ipc.hpp"
-#include "server/embedded_server.hpp"
 
 namespace sbc::desktop {
 
@@ -59,6 +63,20 @@ void SbcClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     if (--browser_count_ == 0) {
         CefQuitMessageLoop();
     }
+}
+
+bool SbcClient::OnBeforeBrowse(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<CefFrame> frame,
+                               CefRefPtr<CefRequest> /*request*/, bool /*user_gesture*/,
+                               bool /*is_redirect*/) {
+    // Main-frame navigation = new document + new page-side RPC transport (whose
+    // request ids restart at 1). Reset the live native session so the old page's
+    // subscription loops stop and the next page opens a clean session, rather than
+    // sharing one across reloads. Subframe loads keep the session. Returning false
+    // allows the navigation to proceed.
+    if (frame && frame->IsMain()) {
+        server_->reset_rpc();
+    }
+    return false;
 }
 
 void SbcClient::ApplyDesktopConfig(int width, int height) {
@@ -118,12 +136,47 @@ cef_return_value_t SbcClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> /*brows
     const std::string url = request->GetURL().ToString();
     const std::string method = request->GetMethod().ToString();
     if (IsCrossOriginProxyable(url, method)) {
-        // Route through the local loader: GET http://host:port/<full-url>. The
-        // server proxies + caches it and spoofs Origin/Referer upstream. Mirrors
-        // android LocalProxyWebViewClient.proxyThroughLocalServer.
         request->SetURL(local_origin_ + "/" + url);
     }
+    const cef_resource_type_t type = request->GetResourceType();
+    const bool is_navigation = type == RT_MAIN_FRAME || type == RT_SUB_FRAME;
+    if (!is_navigation && (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0)) {
+        request->SetFlags(request->GetFlags() | UR_FLAG_DISABLE_CACHE);
+    }
     return RV_CONTINUE;
+}
+
+CefRefPtr<CefResourceHandler> SbcClient::GetResourceHandler(CefRefPtr<CefBrowser> /*browser*/,
+                                                            CefRefPtr<CefFrame> /*frame*/,
+                                                            CefRefPtr<CefRequest> request) {
+    // Only GETs can be a cache HIT; serve_content handles HEAD/conditional/range
+    // on the loopback path, so let everything else fall through to it.
+    const std::string method = request->GetMethod().ToString();
+    if (method != "GET") return nullptr;
+
+    // After OnBeforeResourceLoad, every cacheable request targets the local
+    // origin (cross-origin ones were rewritten onto its /http(s)://... loader).
+    // Anything still off-origin (ws/data/blob/chrome) is not ours.
+    const std::string url = request->GetURL().ToString();
+    if (url.rfind(local_origin_, 0) != 0) return nullptr;
+
+    // Navigations are the no-store homepage shell — never a cache hit.
+    const cef_resource_type_t type = request->GetResourceType();
+    if (type == RT_MAIN_FRAME || type == RT_SUB_FRAME) return nullptr;
+
+    std::string target = url.substr(local_origin_.size());
+    if (target.empty()) target = "/";
+
+    // Forward the request headers so the probe honours revalidation directives
+    // (Cache-Control/Pragma, conditional headers).
+    HeaderMap headers;
+    CefRequest::HeaderMap cef_headers;
+    request->GetHeaderMap(cef_headers);
+    for (const auto& e : cef_headers) headers.add(e.first.ToString(), e.second.ToString());
+
+    auto hit = server_->probe_cache(method, target, headers);
+    if (!hit) return nullptr;  // miss / stale / revalidate -> normal loopback load
+    return new CacheResourceHandler(server_, std::move(*hit));
 }
 
 bool SbcClient::IsCrossOriginProxyable(const std::string& url, const std::string& method) const {

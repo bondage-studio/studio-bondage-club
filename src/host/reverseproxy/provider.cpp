@@ -209,6 +209,39 @@ private:
     bool skip_;
 };
 
+// Builds the response head for a stored entry: drops hop-by-hop, Content-Length
+// (re-applied per body) and Vary (we serve one identity representation), applies
+// a curated Cache-Control override, and stamps the X-Studio-Cache/-Key/-Version,
+// Age and body-hash diagnostics. Shared by serve_entry (looped-back serve) and
+// probe_cache_hit (the desktop direct-serve path) so the two cannot drift.
+HeaderMap build_entry_headers(const Metadata& meta, const std::string& cache_status,
+                              const std::string& cache_control, bool stale_warning) {
+    HeaderMap h;
+    for (const auto& e : meta.header.entries()) {
+        if (rp_hop(e.first) || iequals(e.first, "Content-Length")) continue;
+        if (iequals(e.first, "Vary")) continue;
+        h.add(e.first, e.second);
+    }
+    if (!cache_control.empty()) {
+        // Our override is the authoritative freshness signal. Remove the upstream
+        // Expires/Pragma, which can be stale (e.g. a past Expires left by a 304
+        // that refreshed Date but not Expires) and make caches behave conservatively.
+        h.set("Cache-Control", cache_control);
+        h.remove("Expires");
+        h.remove("Pragma");
+    }
+    if (stale_warning) h.set("Warning", "110 - \"Response is stale\"");
+    h.set("X-Studio-Cache", cache_status);
+    h.set("X-Studio-Cache-Key", meta.key);
+    if (!meta.version.empty()) h.set("X-Studio-Cache-Version", meta.version);
+    auto age =
+        std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - meta.stored_at).count();
+    if (age < 0) age = 0;
+    h.set("Age", std::to_string(age));
+    if (!meta.body_sha256.empty()) h.set("X-Studio-Body-SHA256", meta.body_sha256);
+    return h;
+}
+
 std::shared_ptr<FetchResult> make_committed(std::shared_ptr<cache::Backend> store, Metadata meta,
                                             std::string status, std::string cache_control) {
     auto fr = std::make_shared<FetchResult>();
@@ -440,6 +473,70 @@ asio::awaitable<void> Provider::serve_remote_http(server::Request& req, server::
         co_return;
     }
     co_await serve_target(req, w, *snap, target);
+}
+
+std::optional<host::CacheHit> Provider::probe_cache_hit(const server::Request& req,
+                                                        const Url* explicit_target) {
+    // Direct-serve only the unconditional GET HIT. A conditional/range request
+    // needs serve_content's 304/Range handling, so defer those (and HEAD, and
+    // every non-GET) to the looped-back serve path. This is the synchronous
+    // mirror of serve_target's HIT branch — it must stay byte-for-byte equivalent
+    // to that decision, hence the shared key/route/freshness helpers below.
+    if (!req.is_get()) return std::nullopt;
+    if (!req.headers.get("Range").empty() || !req.headers.get("If-None-Match").empty() ||
+        !req.headers.get("If-Modified-Since").empty()) {
+        return std::nullopt;
+    }
+
+    auto snap = snapshot();
+    Url target = explicit_target ? *explicit_target : target_url(snap->upstream, req);
+    cache::RouteAction action = router_->match(target, snap->upstream);
+    if (action.bypass) return std::nullopt;
+
+    auto [store, ttl, max_bytes] = resolve_store(*snap, action);
+    (void)ttl;
+    (void)max_bytes;
+    std::string version = cache::extract_version(action.version, target);
+    std::string key = cache_key(snap->upstream, target, action, version);
+    auto now = Clock::now();
+
+    std::optional<Metadata> cached;
+    try {
+        cached = store->get(key);  // synchronous DB read; metadata only (small)
+    } catch (const std::exception& e) {
+        spdlog::warn("desktop cache probe: invalid entry key={} error={}", key, e.what());
+        return std::nullopt;
+    }
+    if (!cached) return std::nullopt;
+
+    bool version_mismatch =
+        action.version_revalidate && !version.empty() && cached->version != version;
+    bool force_reval = cache::request_forces_revalidation(req.headers) || version_mismatch;
+    if (!cached->fresh(now) || force_reval) return std::nullopt;
+
+    // Clean fresh HIT. Record the traffic the looped-back serve_entry would have
+    // (the body is delivered in full by the CEF handler) and refresh the access
+    // time, then hand back the serve-ready head + a body handle.
+    maybe_touch(store, key, *cached, now);
+    record_traffic(cached->url, "HIT", cached->status_code, cached->body_size);
+
+    host::CacheHit hit;
+    hit.status_code = cached->status_code;
+    hit.header = build_entry_headers(*cached, "HIT", action.cache_control, false);
+    hit.store = std::move(store);
+    hit.key = std::move(key);
+    hit.body_size = cached->body_size;
+    return hit;
+}
+
+std::string Provider::read_cache_body(const std::shared_ptr<cache::Backend>& store,
+                                      const std::string& key) {
+    try {
+        return store->open_body(key);
+    } catch (const std::exception& e) {
+        spdlog::warn("desktop cache read: key={} error={}", key, e.what());
+        return {};
+    }
 }
 
 asio::awaitable<void> Provider::serve_target(server::Request& req, server::ResponseWriter& w,
@@ -806,31 +903,7 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
     record_traffic(meta.url, cache_status, meta.status_code,
                    static_cast<std::int64_t>(body.size()));
 
-    HeaderMap h;
-    for (const auto& e : meta.header.entries()) {
-        if (rp_hop(e.first) || iequals(e.first, "Content-Length")) continue;
-        // Drop Vary even for entries cached before it was stripped at ingest: we
-        // serve one identity representation, so the response does not vary.
-        if (iequals(e.first, "Vary")) continue;
-        h.add(e.first, e.second);
-    }
-    if (!cache_control.empty()) {
-        // Our override is the authoritative freshness signal. Remove the upstream
-        // Expires/Pragma, which can be stale (e.g. a past Expires left by a 304
-        // that refreshed Date but not Expires) and make caches behave conservatively.
-        h.set("Cache-Control", cache_control);
-        h.remove("Expires");
-        h.remove("Pragma");
-    }
-    if (stale_warning) h.set("Warning", "110 - \"Response is stale\"");
-    h.set("X-Studio-Cache", cache_status);
-    h.set("X-Studio-Cache-Key", meta.key);
-    if (!meta.version.empty()) h.set("X-Studio-Cache-Version", meta.version);
-    auto age =
-        std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - meta.stored_at).count();
-    if (age < 0) age = 0;
-    h.set("Age", std::to_string(age));
-    if (!meta.body_sha256.empty()) h.set("X-Studio-Body-SHA256", meta.body_sha256);
+    HeaderMap h = build_entry_headers(meta, cache_status, cache_control, stale_warning);
 
     std::optional<TimePoint> modt = meta.stored_at;
     if (auto lm = meta.last_modified(); !lm.empty()) {

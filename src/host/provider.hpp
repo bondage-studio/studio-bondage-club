@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,6 +69,40 @@ public:
     virtual boost::asio::awaitable<void> serve_remote_http(server::Request& req,
                                                            server::ResponseWriter& w,
                                                            const Url& target) = 0;
+};
+
+// CacheHit is a confirmed, fresh cache HIT produced by CacheProbeProvider for
+// in-process hosts (the desktop CEF client) that serve cached bytes directly
+// instead of looping the request back through the local HTTP server. It carries
+// the serve-ready response head (the same headers serve_entry would emit, minus
+// Content-Length) plus a handle to read the body lazily off the hot path.
+struct CacheHit {
+    int status_code = 0;
+    HeaderMap header;                       // serve-ready (no Content-Length/Vary)
+    std::shared_ptr<cache::Backend> store;  // body source for read_cache_body
+    std::string key;
+    std::int64_t body_size = 0;
+};
+
+// CacheProbeProvider answers "would this GET be served straight from a fresh
+// cache entry?" synchronously, doing no upstream/network work. Only a clean,
+// fresh, unconditional HIT returns a value; anything that would revalidate,
+// stream, range, or miss returns nullopt so the caller falls back to the normal
+// (looped-back) serve path. Implemented by the reverse-proxy provider; queried
+// via dynamic_cast on the active provider.
+class CacheProbeProvider {
+public:
+    virtual ~CacheProbeProvider() = default;
+    // |explicit_target| is the remote-loader target (the /http(s)://... loader)
+    // when set; when null the target is derived from |req| exactly as
+    // Provider::serve does. Records the HIT into the traffic stats on success
+    // (the looped-back serve_entry would have). Safe to call from any thread.
+    virtual std::optional<CacheHit> probe_cache_hit(const server::Request& req,
+                                                    const Url* explicit_target) = 0;
+    // read_cache_body reads a committed body by store+key (a synchronous DB read;
+    // call off the latency-sensitive thread). Returns "" if the entry vanished.
+    virtual std::string read_cache_body(const std::shared_ptr<cache::Backend>& store,
+                                        const std::string& key) = 0;
 };
 
 // StoreProvider exposes the cache backends for stats/clear/SSE.

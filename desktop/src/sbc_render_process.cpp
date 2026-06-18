@@ -150,19 +150,28 @@ void SbcRenderProcessHandler::OnContextCreated(CefRefPtr<CefBrowser> browser,
     // Expose __sbcNotify, then install the window.Notification shim that routes
     // through it. CEF presents no OS notifications on its own, so without this the
     // game's notifications would be silently dropped.
-    context->GetGlobal()->SetValue(
-        "__sbcNotify", CefV8Value::CreateFunction("notify", new NotifyHandler()),
-        V8_PROPERTY_ATTRIBUTE_NONE);
+    context->GetGlobal()->SetValue("__sbcNotify",
+                                   CefV8Value::CreateFunction("notify", new NotifyHandler()),
+                                   V8_PROPERTY_ATTRIBUTE_NONE);
     frame->ExecuteJavaScript(kNotificationShim, frame->GetURL(), 0);
 }
 
 void SbcRenderProcessHandler::OnContextReleased(CefRefPtr<CefBrowser> browser,
                                                 CefRefPtr<CefFrame> frame,
-                                                CefRefPtr<CefV8Context> /*context*/) {
+                                                CefRefPtr<CefV8Context> context) {
     if (!frame->IsMain()) {
         return;
     }
-    bridges_.erase(browser->GetIdentifier());
+    // On a reload/navigation CEF may create the new document's context before
+    // releasing the old one. Both main-frame contexts share this browser-id key,
+    // so a blind erase here would drop the *new* page's bridge — and with it every
+    // inbound RPC response (the page hangs at homepage.get, since the native
+    // transport has no retry). Only erase when the entry still refers to the
+    // context actually being released.
+    auto it = bridges_.find(browser->GetIdentifier());
+    if (it != bridges_.end() && it->second.context->IsSame(context)) {
+        bridges_.erase(it);
+    }
 }
 
 bool SbcRenderProcessHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,

@@ -532,8 +532,8 @@ void App::register_rpc_methods() {
         "stats.subscribe", [this]() { return rpc_stats_event(); }, std::chrono::seconds(2));
     // Event stream: pushed on every applied config change. The initial producer
     // hands a new subscriber the current config (same shape as config.get).
-    d.add_event_stream(
-        "config.subscribe", config_hub_.get(), [this]() { return rpc_config_get(); });
+    d.add_event_stream("config.subscribe", config_hub_.get(),
+                       [this]() { return rpc_config_get(); });
 }
 
 asio::awaitable<ordered_json> App::rpc_userscript(const std::string& method,
@@ -807,33 +807,34 @@ void App::register_scopes() {
     using config::ServerConfig;
     // connection: server host/port (a listener-address change needs a restart)
     // plus the upstream/proxy/game-server URLs that the provider re-reads live.
-    scopes_.push_back(make_scope(
-        "connection",
-        {scalar_field_srv("host", &ServerConfig::host),
-         scalar_field_srv("port", &ServerConfig::port),
-         scalar_field_srv("adminBasePath", &ServerConfig::admin_base_path),
-         scalar_field("upstream", &Config::upstream),
-         scalar_field("socks5Proxy", &Config::socks5_proxy),
-         scalar_field("gameServer", &Config::game_server)},
-        [](const Config& o, const Config& n) {
-            return (o.server.host != n.server.host || o.server.port != n.server.port)
-                       ? UpdateTier::Restart
+    scopes_.push_back(make_scope("connection",
+                                 {scalar_field_srv("host", &ServerConfig::host),
+                                  scalar_field_srv("port", &ServerConfig::port),
+                                  scalar_field_srv("adminBasePath", &ServerConfig::admin_base_path),
+                                  scalar_field("upstream", &Config::upstream),
+                                  scalar_field("socks5Proxy", &Config::socks5_proxy),
+                                  scalar_field("gameServer", &Config::game_server)},
+                                 [](const Config& o, const Config& n) {
+                                     return (o.server.host != n.server.host ||
+                                             o.server.port != n.server.port)
+                                                ? UpdateTier::Restart
+                                                : UpdateTier::Live;
+                                 }));
+    scopes_.push_back(
+        make_struct_scope("cache", &Config::cache, [](const Config& o, const Config& n) {
+            return (o.cache.dir != n.cache.dir ||
+                    store_topology_changed(o.cache.stores, n.cache.stores))
+                       ? UpdateTier::Recreate
                        : UpdateTier::Live;
         }));
-    scopes_.push_back(make_struct_scope("cache", &Config::cache, [](const Config& o, const Config& n) {
-        return (o.cache.dir != n.cache.dir ||
-                store_topology_changed(o.cache.stores, n.cache.stores))
-                   ? UpdateTier::Recreate
-                   : UpdateTier::Live;
-    }));
     // gameserver: the local/remote routing toggle (read per request -> live) and
     // the embedded game DB storage path (hot-reloaded/migrated by apply_config,
     // independent of the cache provider, so it stays a Live tier).
-    scopes_.push_back(make_scope("gameserver",
-                                 {scalar_field("localGameServer", &Config::local_game_server),
-                                  scalar_field("gameServerStoragePath",
-                                               &Config::game_server_storage_path)},
-                                 tier_live));
+    scopes_.push_back(
+        make_scope("gameserver",
+                   {scalar_field("localGameServer", &Config::local_game_server),
+                    scalar_field("gameServerStoragePath", &Config::game_server_storage_path)},
+                   tier_live));
     scopes_.push_back(make_struct_scope("gamesettings", &Config::game_server_settings, tier_live));
     scopes_.push_back(make_scope("mode", {scalar_field("mode", &Config::mode)}, tier_recreate));
     scopes_.push_back(make_struct_scope("package", &Config::package, tier_live));
@@ -845,12 +846,12 @@ void App::register_scopes() {
 #if defined(SBC_DESKTOP)
     // desktop: window size applies live; hardware acceleration is read once when
     // building CefSettings, so changing it needs a restart.
-    scopes_.push_back(make_struct_scope("desktop", &Config::desktop, [](const Config& o,
-                                                                        const Config& n) {
-        return o.desktop.hardware_acceleration != n.desktop.hardware_acceleration
-                   ? UpdateTier::Restart
-                   : UpdateTier::Live;
-    }));
+    scopes_.push_back(
+        make_struct_scope("desktop", &Config::desktop, [](const Config& o, const Config& n) {
+            return o.desktop.hardware_acceleration != n.desktop.hardware_acceleration
+                       ? UpdateTier::Restart
+                       : UpdateTier::Live;
+        }));
 #endif
 }
 
@@ -886,8 +887,7 @@ bool any_tier(const std::map<std::string, UpdateTier>& changed, UpdateTier t) {
 // inside the cache tree, so the cache-dir migrate physically relocates it for us.
 bool game_move_covered_by_cache(const ConfigChange& c) {
     return c.old_cfg.game_server_storage_path.empty() &&
-           c.new_cfg.game_server_storage_path.empty() &&
-           c.old_cfg.cache.dir != c.new_cfg.cache.dir;
+           c.new_cfg.game_server_storage_path.empty() && c.old_cfg.cache.dir != c.new_cfg.cache.dir;
 }
 
 }  // namespace
@@ -931,8 +931,7 @@ void App::swap_provider(const ConfigChange& ch) {
             // If we already moved its data, it now lives at the new path.
             const std::string old_game = config::game_storage_dir(old_cfg);
             const std::string new_game = config::game_storage_dir(new_cfg);
-            if (game_ && old_game != new_game)
-                game_->reopen(ch.migrate ? new_game : old_game);
+            if (game_ && old_game != new_game) game_->reopen(ch.migrate ? new_game : old_game);
             throw;
         }
     } else if (needs_live) {
@@ -1012,6 +1011,64 @@ ordered_json App::build_config_event(const ConfigChange& ch) {
 }
 
 #if defined(SBC_DESKTOP)
+std::optional<host::CacheHit> App::desktop_probe_cache(const std::string& method,
+                                                       const std::string& target,
+                                                       const HeaderMap& headers) {
+    if (method != "GET") return std::nullopt;
+
+    // Reconstruct just enough of a parsed request for the route guards and the
+    // provider's target derivation (target_url / remote_loader_target).
+    Request req;
+    req.method = method;
+    req.target = target;
+    req.headers = headers;
+    if (auto u = Url::try_parse(target)) {
+        req.path = u->path();
+        req.raw_query = u->query();
+    } else {
+        req.path = target;
+    }
+
+    auto state = snapshot();
+    const config::Config& cfg = state->cfg;
+
+    // Mirror serve()'s route table: every endpoint matched before the provider
+    // fallback (line "co_await state->provider->serve(...)") is non-cacheable, so
+    // reject it here. Only the remote loader and the reverse-proxy serve fallback
+    // flow into the cache.
+    if (req.path == "/rpc" || req.path == kServiceWorkerPath || req.path == "/") {
+        return std::nullopt;
+    }
+    if (req.path.rfind("/local/socket.io/", 0) == 0 ||
+        req.path.rfind("/proxy/socket.io/", 0) == 0 || req.path.rfind("/socket.io/", 0) == 0) {
+        return std::nullopt;
+    }
+    std::string admin_no_slash = cfg.server.admin_base_path;
+    if (!admin_no_slash.empty() && admin_no_slash.back() == '/') admin_no_slash.pop_back();
+    if (!cfg.server.admin_base_path.empty() &&
+        (req.path == admin_no_slash || req.path.rfind(cfg.server.admin_base_path, 0) == 0)) {
+        return std::nullopt;
+    }
+
+    auto* probe = dynamic_cast<host::CacheProbeProvider*>(state->provider.get());
+    if (probe == nullptr) return std::nullopt;
+
+    // The remote loader (/http(s)://...) supplies an explicit target; everything
+    // else is a same-origin asset the provider resolves against the upstream.
+    if (auto loader_target = remote_loader_target(req)) {
+        return probe->probe_cache_hit(req, &*loader_target);
+    }
+    return probe->probe_cache_hit(req, nullptr);
+}
+
+std::string App::desktop_cache_read_body(const std::shared_ptr<cache::Backend>& store,
+                                         const std::string& key) {
+    auto state = snapshot();
+    auto* probe = dynamic_cast<host::CacheProbeProvider*>(state->provider.get());
+    if (probe == nullptr) return {};
+    return probe->read_cache_body(store, key);
+}
+
 void App::apply_desktop_window_size(int width, int height) {
     config::Config cfg = snapshot()->cfg;
     if (!cfg.desktop.remember_window_size) return;

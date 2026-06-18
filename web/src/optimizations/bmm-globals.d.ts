@@ -14,6 +14,7 @@ declare global {
     version?: number;
     platform?: { id: string; name: string; version?: string; capabilities?: string[] };
     settings?: Record<string, unknown>;
+    fetch?(url: string, init?: RequestInit): Promise<Response>;
     onReady?(api: BmmApi): void;
     onEvent?(event: { type: string; payload?: unknown }): void;
   }

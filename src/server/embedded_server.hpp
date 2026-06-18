@@ -6,7 +6,10 @@
 #include <string>
 
 #if defined(SBC_DESKTOP)
+#include <optional>
+
 #include "config/config.hpp"
+#include "host/provider.hpp"
 #include "server/config_listener.hpp"
 #endif
 
@@ -66,6 +69,20 @@ public:
     // native window (the reverse of a panel edit). Posts onto the Asio runtime and
     // applies the "desktop" scope; the change then echoes to config.subscribe.
     void update_desktop_window_size(int width, int height);
+
+    // --- Direct cache serving (CEF ResourceHandler) ---
+    // probe_cache returns a confirmed fresh cache HIT for a GET so the CEF host can
+    // serve it directly, skipping the localhost loopback. nullopt -> not a clean
+    // hit; the caller must fall back to the normal load. |target| is the
+    // server-relative request target (path + optional query). Safe to call from
+    // any thread (the CEF IO thread): only atomic/locked reads + a synchronous
+    // metadata DB read.
+    std::optional<host::CacheHit> probe_cache(const std::string& method, const std::string& target,
+                                              const HeaderMap& headers);
+    // read_cache_body reads a probed HIT's body by store+key (a synchronous DB
+    // read; call off the latency-sensitive IO thread, e.g. a CEF file thread).
+    std::string read_cache_body(const std::shared_ptr<cache::Backend>& store,
+                                const std::string& key);
 #endif
 
 #if defined(SBC_NATIVE_RPC)
