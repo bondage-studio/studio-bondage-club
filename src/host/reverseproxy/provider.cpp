@@ -99,17 +99,35 @@ std::string single_joining_slash(const std::string& a, const std::string& b) {
     return a + b;
 }
 
-// Like sanitize(), but also drops Content-Encoding and Content-Length: cached and
-// streamed bodies are the decoded identity representation, so the upstream's
-// encoding/length headers no longer apply.
+// Like sanitize(), but also drops Content-Encoding, Content-Length, and Vary:
+// cached and streamed bodies are the decoded identity representation, so the
+// upstream's encoding/length headers no longer apply, and — because we always
+// serve that single identity representation regardless of the client's
+// Accept-Encoding — "Vary: Accept-Encoding" is inaccurate and only confuses
+// browser/intermediary caches (policy.cpp guarantees Vary carries nothing else).
 HeaderMap sanitize_decoded(const HeaderMap& src) {
     HeaderMap out;
     for (const auto& e : src.entries()) {
         if (rp_hop(e.first)) continue;
         if (iequals(e.first, "Content-Encoding") || iequals(e.first, "Content-Length")) continue;
+        if (iequals(e.first, "Vary")) continue;
         out.add(e.first, e.second);
     }
     return out;
+}
+
+// Reports whether a Content-Encoding is one we decompress (so the body length
+// changes). Identity / absent / unknown (raw passthrough) encodings keep the
+// upstream body bytes and Content-Length unchanged.
+bool encoding_transforms(const std::string& content_encoding) {
+    std::size_t comma = content_encoding.find(',');
+    std::string tok =
+        content_encoding.substr(0, comma == std::string::npos ? content_encoding.size() : comma);
+    std::size_t b = 0, e = tok.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(tok[b]))) ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(tok[e - 1]))) --e;
+    std::string_view t(tok.data() + b, e - b);
+    return iequals(t, "gzip") || iequals(t, "x-gzip") || iequals(t, "deflate") || iequals(t, "br");
 }
 
 // A rule's cacheable-status override (if any) wins over the global default set.
@@ -560,26 +578,36 @@ asio::awaitable<std::shared_ptr<FetchResult>> Provider::fetch(
 
         if (w == nullptr) co_return;  // buffer mode (homepage): collect body only
 
-        // Stream to the client. When decoding, the identity length is unknown
-        // up-front and the encoding/length no longer apply, so use chunked framing
-        // and drop those headers; a raw passthrough keeps them.
+        // When we decompress (gzip/br), the decoded length is unknown until the
+        // body completes, so a live stream would have to be length-less/chunked —
+        // which browsers are reluctant to cache. Defer those to the post-flight
+        // cache serve (serve_entry), which emits a proper Content-Length. Such
+        // bodies are text and small, so the streaming TTFB cost is negligible.
+        if (encoding_transforms(ce)) co_return;
+
+        // Identity / raw passthrough: the body bytes are unchanged, so stream live
+        // while preserving the upstream Content-Length. This keeps the streaming
+        // TTFB win for the large assets (images) and a cacheable response.
         HeaderMap h;
         for (const auto& e : resp.headers.entries()) {
             if (rp_hop(e.first)) continue;
-            if (!st->raw_passthrough &&
-                (iequals(e.first, "Content-Encoding") || iequals(e.first, "Content-Length")))
-                continue;
-            h.add(e.first, e.second);
+            // Identity is served regardless of Accept-Encoding, so drop the
+            // inaccurate Vary (keep it for a raw passthrough, which is encoded).
+            if (!st->raw_passthrough && iequals(e.first, "Vary")) continue;
+            h.add(e.first, e.second);  // Content-Length is re-applied by send_header below
         }
-        if (!cache_control.empty()) h.set("Cache-Control", cache_control);
+        if (!cache_control.empty()) {
+            h.set("Cache-Control", cache_control);
+            h.remove("Expires");
+            h.remove("Pragma");
+        }
+        h.set_if_absent("Accept-Ranges", "bytes");
         h.set("X-Studio-Cache", "MISS");
         std::optional<std::int64_t> clen;
-        if (st->raw_passthrough) {
-            if (auto cl = resp.headers.get("Content-Length"); !cl.empty()) {
-                try {
-                    clen = std::stoll(cl);
-                } catch (...) {
-                }
+        if (auto cl = resp.headers.get("Content-Length"); !cl.empty()) {
+            try {
+                clen = std::stoll(cl);
+            } catch (...) {
             }
         }
         st->streaming = true;
@@ -757,9 +785,20 @@ asio::awaitable<void> Provider::serve_entry(server::Request& req, server::Respon
 
     HeaderMap h;
     for (const auto& e : meta.header.entries()) {
-        if (!rp_hop(e.first) && !iequals(e.first, "Content-Length")) h.add(e.first, e.second);
+        if (rp_hop(e.first) || iequals(e.first, "Content-Length")) continue;
+        // Drop Vary even for entries cached before it was stripped at ingest: we
+        // serve one identity representation, so the response does not vary.
+        if (iequals(e.first, "Vary")) continue;
+        h.add(e.first, e.second);
     }
-    if (!cache_control.empty()) h.set("Cache-Control", cache_control);
+    if (!cache_control.empty()) {
+        // Our override is the authoritative freshness signal. Remove the upstream
+        // Expires/Pragma, which can be stale (e.g. a past Expires left by a 304
+        // that refreshed Date but not Expires) and make caches behave conservatively.
+        h.set("Cache-Control", cache_control);
+        h.remove("Expires");
+        h.remove("Pragma");
+    }
     if (stale_warning) h.set("Warning", "110 - \"Response is stale\"");
     h.set("X-Studio-Cache", cache_status);
     h.set("X-Studio-Cache-Key", meta.key);
