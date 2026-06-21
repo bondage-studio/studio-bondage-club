@@ -1,5 +1,6 @@
 import { isNativeRuntime } from "@/lib/platform";
 import { installOptimizationHost } from "@/optimizations/host";
+import { injectModManager } from "@/optimizations/modManager";
 import { rpcClient } from "@/rpc/client";
 import { setRpcToken } from "@/rpc/token";
 import { injectUserscriptsAt } from "@/userscripts/inject";
@@ -335,6 +336,7 @@ async function restoreParsedHomepage(
     // Advertise the BMM host bridge before any userscript (incl. the BMM loader)
     // runs, so window.__bmmHost is in place when the BMM bundle captures it.
     installOptimizationHost();
+    injectModManager();
 
     // Userscripts @run-at document-start: before the page's own scripts run.
     await injectUserscriptsAt("document-start");

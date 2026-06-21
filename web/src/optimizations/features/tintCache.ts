@@ -39,8 +39,12 @@ function tintSignature(): string {
 
 // Faithful port of DrawCharacter's overlay onto the given context's canvas.
 function paintTint(src: HTMLCanvasElement, ctx: CanvasRenderingContext2D): HTMLCanvasElement {
-  ctx.canvas.width = CanvasDrawWidth;
-  ctx.canvas.height = CanvasDrawHeight;
+  // Size from the source canvas, not BC's CanvasDrawWidth/Height: they're equal under
+  // vanilla BC, but draw-space-extending mods widen the character canvas, and copying
+  // a wider source into a fixed-width target would clip it and cache a broken tint.
+  // The `||` fallback covers a not-yet-built canvas.
+  ctx.canvas.width = src.width || CanvasDrawWidth;
+  ctx.canvas.height = src.height || CanvasDrawHeight;
   ctx.globalCompositeOperation = "copy";
   ctx.drawImage(src, 0, 0);
   ctx.globalCompositeOperation = "source-atop";
@@ -59,7 +63,11 @@ function paintTint(src: HTMLCanvasElement, ctx: CanvasRenderingContext2D): HTMLC
 // Global entry point invoked by the patched DrawCharacter. Returns the canvas to draw:
 // the original when no overlay applies, otherwise the tinted (cached) one. Mirrors
 // BC's own gate so the patched block is behaviour-preserving.
-function drawTint(C: Character, Canvas: HTMLCanvasElement, OverrideDark: boolean): HTMLCanvasElement {
+function drawTint(
+  C: Character,
+  Canvas: HTMLCanvasElement,
+  OverrideDark: boolean,
+): HTMLCanvasElement {
   if (C.IsPlayer() || OverrideDark || !(Player.IsBlind() || Player.HasTints())) return Canvas;
 
   // Disabled: behave exactly like BC — uncached, shared scratch.

@@ -11,22 +11,31 @@ interface LazyState {
   loadHash: number | null;
   isDirty: boolean;
   dirtyAt: number;
+  builtWidth: number;
 }
 
-// Keyed by the Character object: entries are GC'd with the character, so no
-// manual eviction and no risk of a stale string-id key.
+// WeakMap so entries are GC'd with the character — no manual eviction, no stale keys.
 const lazyStates = new WeakMap<Character, LazyState>();
-// True while a chat-room character pass is running, so the build hook can tell an
-// in-loop redraw from an out-of-loop deferred one.
+// True only during a chat-room character pass; lets the build hook tell an in-loop
+// redraw from an out-of-loop one, which it defers instead of deciding blindly.
 let isDrawing = false;
-// Set while DrawCharacter forces a real rebuild of a stale character so the build
-// hook bypasses its skip logic for that one call.
+// Set while we drive a forced rebuild, so the build hook lets that one call through.
 let forceBuildCanvas = false;
-// One-shot guard so the build hook logs its first invocation (and the flag state
-// at that moment) without spamming the hot path.
 let loggedBuild = false;
 
 const FORCE_DRAW_MS = 5000;
+
+// Draw-geometry guard for echo-clothing-ext, which doubles every character canvas
+// (500->1000) and bakes a body offset re-applied in its patched DrawCharacter. Reusing a
+// canvas built in the other mode stretches/shifts it ("flying clothes"), so it must be
+// rebuilt. Why builtWidth and not canvas.width: echo's own DrawCharacter hook rewrites
+// canvas.width racily, and a stale canvas hashes identically every frame — the width WE
+// last painted is the only reliable signal. Expected = GLDrawCanvas.width / 2 (character
+// and blink share it); nothing built yet, or no WebGL, -> not stale.
+function geometryStale(state: LazyState): boolean {
+  if (!GLDrawCanvas || state.builtWidth === 0) return false;
+  return state.builtWidth !== GLDrawCanvas.width / 2;
+}
 
 function ensureState(C: Character, now: number): LazyState {
   let state = lazyStates.get(C);
@@ -39,6 +48,7 @@ function ensureState(C: Character, now: number): LazyState {
       loadHash: null,
       isDirty: false,
       dirtyAt: 0,
+      builtWidth: 0,
     };
     lazyStates.set(C, state);
   }
@@ -78,8 +88,7 @@ function appearanceHash(C: Character): number {
 export const lazyCanvas: Optimization = {
   key: "lazyCanvas",
   install(mod) {
-    // Mark the draw loop so the build hook can detect in-loop redraws (priority 10,
-    // innermost on ChatRoomCharacterViewDraw).
+      // Mark the draw loop so the build hook can distinguish in-loop redraws.
     mod.hookFunction("ChatRoomCharacterViewDraw", 10, (args, next) => {
       if (!flags.lazyCanvas) return next(args);
       isDrawing = true;
@@ -104,9 +113,11 @@ export const lazyCanvas: Optimization = {
 
       const now = Date.now();
       const state = ensureState(C, now);
+      // Force a rebuild on a geometry flip — in or out of the loop, never deferred.
+      const stale = geometryStale(state);
 
-      // Called outside the chat-room draw loop: defer to DrawCharacter.
-      if (!isDrawing) {
+      // Out of the draw loop: defer the skip/draw decision to DrawCharacter.
+      if (!isDrawing && !stale) {
         if (!state.isDirty) {
           state.dirtyAt = now;
           state.isDirty = true;
@@ -116,14 +127,16 @@ export const lazyCanvas: Optimization = {
         return undefined;
       }
 
-      let allowDraw = false;
+      let allowDraw = stale;
       let currentHash: number | null = null;
 
-      if (now - state.createdAt <= 15000) {
-        // performance.now() is noisy in the first seconds; just draw.
+      if (allowDraw) {
+        // geometry mismatch: already forced
+      } else if (now - state.createdAt <= 15000) {
+        // Render timings are noisy in the first seconds, so don't trust the backoff yet.
         allowDraw = true;
       } else if (now > state.nextForceDraw) {
-        // Heartbeat redraw guards against hash collisions leaving a stale canvas.
+        // Heartbeat: bound how long a hash collision can leave a stale canvas up.
         allowDraw = true;
       } else {
         currentHash = appearanceHash(C);
@@ -137,29 +150,27 @@ export const lazyCanvas: Optimization = {
         return undefined;
       }
 
-      // Let the paint run; the render tracker (outer hook) measures and records it.
       const res = next(args);
 
+      // Record the mode we built in so geometryStale can detect a later flip.
+      if (C.Canvas) state.builtWidth = C.Canvas.width;
+      state.isDirty = false;
       state.lastHash = currentHash;
       const after = Date.now();
       state.nextForceDraw = after + FORCE_DRAW_MS;
-      // Back off proportionally to how expensive this character is to draw. The
-      // current rebuild is recorded by the tracker after we return, so this reads
-      // the running average up to (not including) it — fine for a heuristic.
+      // Back off longer for characters that are expensive to draw. getRenderStat reads
+      // the average up to (not including) this rebuild — fine for a heuristic.
       const prior = getRenderStat(C);
       const avg = prior && prior.rebuilds ? prior.totalMs / prior.rebuilds : 0;
       state.nextStaleDraw = after + avg * 100;
       return res;
     });
 
-    // Gate the expensive prep inside CharacterLoadCanvas. Animated assets retrigger
-    // CharacterRefresh -> CharacterLoadCanvas on their refresh rate (Drawing.js), and
-    // that prep — the CharacterAppearanceStringify+parse deep copy, SortLayers and
-    // BuildMasks — runs every time even when the result is identical; the BuildCanvas
-    // gate above only skips the final paint, not this. When the appearance+pose hash
-    // matches the last full load, the cached AppearanceLayers/Masks are still valid,
-    // so we skip the prep and route straight to CharacterAppearanceBuildCanvas, which
-    // is itself gated and still carries the heartbeat that flushes image reloads.
+    // Skip the prep, not just the paint. Animated assets retrigger CharacterRefresh ->
+    // CharacterLoadCanvas every refresh, re-running the Stringify+parse deep copy,
+    // SortLayers and BuildMasks even when nothing changed — the BuildCanvas gate above
+    // only skips the paint. When the appearance+pose hash matches the last full load the
+    // cached layers/masks are still valid, so reuse them and only repaint.
     mod.hookFunction("CharacterLoadCanvas", 10, (args, next) => {
       if (!flags.lazyCanvas) return next(args);
       const C = args[0] as Character | undefined;
@@ -171,30 +182,32 @@ export const lazyCanvas: Optimization = {
       const state = ensureState(C, now);
       const hash = appearanceHash(C);
 
-      // First load, or a genuine appearance/pose change: run the full prep, then
-      // remember the hash it produced.
+      // First load or a real appearance/pose change: run the full prep, record its hash.
       if (state.loadHash === null || state.loadHash !== hash) {
         const res = next(args);
         state.loadHash = hash;
         return res;
       }
 
-      // Unchanged since the last full load: reuse the cached layers/masks and only
-      // repaint. BuildCanvas decides whether the paint actually runs (and its 5s
-      // heartbeat still picks up late image loads). Clearing MustDraw mirrors the
-      // tail of the real CharacterLoadCanvas.
+      // Unchanged: reuse cached layers/masks, only repaint. BuildCanvas decides if the
+      // paint runs; clearing MustDraw mirrors the real CharacterLoadCanvas tail.
       CharacterAppearanceBuildCanvas(C);
       C.MustDraw = false;
       return undefined;
     });
 
-    // Flush a character whose rebuild was deferred while it was off the draw loop.
     mod.hookFunction("DrawCharacter", 10, (args, next) => {
       if (flags.lazyCanvas) {
         const C = args[0] as Character | undefined;
         if (C && C.CharacterID) {
           const state = lazyStates.get(C);
-          if (state && state.isDirty && Date.now() - state.dirtyAt > 1000) {
+          if (state && geometryStale(state)) {
+            // A geometry flip doesn't set MustDraw, so BC would just blit the stale
+            // canvas (flying clothes) forever. Force MustDraw so the real DrawCharacter
+            // routes through CharacterLoadCanvas -> BuildCanvas and rebuilds it.
+            C.MustDraw = true;
+          } else if (state && state.isDirty && Date.now() - state.dirtyAt > 1000) {
+            // Flush a rebuild deferred while the character was off the draw loop.
             forceBuildCanvas = true;
             try {
               CharacterAppearanceBuildCanvas(C);

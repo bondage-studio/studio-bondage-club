@@ -63,22 +63,23 @@ public:
     // RPC hop; the callback runs on the apply's executor.
     void on_config_change(ConfigPhase phase, std::string scope_filter, ConfigListener fn);
 
-#if defined(SBC_DESKTOP)
-    // desktop_probe_cache answers "would this GET be served straight from a fresh
-    // cache entry?" for the in-process CEF host, so it can serve cached bytes
-    // directly instead of looping back through the local HTTP server. It applies
-    // the same route table as serve() (only the reverse-proxy serve + remote
-    // loader paths are cacheable) and delegates to the active provider's
-    // CacheProbeProvider. nullopt -> not a clean hit; the caller falls back to the
-    // normal load. Synchronous and safe to call from the CEF IO thread.
-    std::optional<host::CacheHit> desktop_probe_cache(const std::string& method,
-                                                      const std::string& target,
-                                                      const HeaderMap& headers);
-    // desktop_cache_read_body reads a probed HIT's body by store+key (a synchronous
-    // DB read; call off the IO thread). Returns "" if the entry vanished.
-    std::string desktop_cache_read_body(const std::shared_ptr<cache::Backend>& store,
-                                        const std::string& key);
+#if defined(SBC_CACHE_PROBE)
+    // probe_cache answers "would this GET be served straight from a fresh cache
+    // entry?" for an in-process host (Android system WebView, desktop CEF), so it
+    // can serve cached bytes directly instead of looping back through the local
+    // HTTP server. It applies the same route table as serve() (only the
+    // reverse-proxy serve + remote loader paths are cacheable) and delegates to the
+    // active provider's CacheProbeProvider. nullopt -> not a clean hit; the caller
+    // falls back to the normal load. Synchronous and safe to call from any thread.
+    std::optional<host::CacheHit> probe_cache(const std::string& method, const std::string& target,
+                                              const HeaderMap& headers);
+    // cache_read_body reads a probed HIT's body by store+key (a synchronous DB
+    // read; call off the IO thread). Returns "" if the entry vanished.
+    std::string cache_read_body(const std::shared_ptr<cache::Backend>& store,
+                                const std::string& key);
+#endif
 
+#if defined(SBC_DESKTOP)
     // apply_desktop_window_size persists a window-size change from the native
     // window (reverse of a panel edit): merges into the live config, validates,
     // applies the "desktop" scope and echoes to config.subscribe. No-op when

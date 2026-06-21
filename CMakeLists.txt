@@ -134,6 +134,14 @@ if(ANDROID OR SBC_BUILD_CEF_CLIENT)
   target_compile_definitions(sbc_core PUBLIC SBC_NATIVE_RPC)
 endif()
 
+# Direct cache serving: the probe that lets an in-process host (the Android
+# system WebView via shouldInterceptRequest, the desktop CEF window via a
+# ResourceHandler) serve a confirmed-fresh cache HIT directly, skipping the
+# localhost loopback. Available to every native host; unrelated to the RPC bridge.
+if(ANDROID OR SBC_BUILD_CEF_CLIENT)
+  target_compile_definitions(sbc_core PUBLIC SBC_CACHE_PROBE)
+endif()
+
 # Desktop-only config (window geometry, GPU compositing) and the in-process
 # config-change forwarder the CEF host uses to react to edits. Compiled into
 # sbc_core only for the desktop build (a CLI built in the same configure shares

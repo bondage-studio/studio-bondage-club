@@ -181,19 +181,23 @@ void EmbeddedServer::update_desktop_window_size(int width, int height) {
                        [app, width, height] { app->apply_desktop_window_size(width, height); });
 }
 
+#endif  // SBC_DESKTOP
+
+#if defined(SBC_CACHE_PROBE)
+
 std::optional<host::CacheHit> EmbeddedServer::probe_cache(const std::string& method,
                                                           const std::string& target,
                                                           const HeaderMap& headers) {
     if (!impl_ || !impl_->app) return std::nullopt;
-    return impl_->app->desktop_probe_cache(method, target, headers);
+    return impl_->app->probe_cache(method, target, headers);
 }
 
 std::string EmbeddedServer::read_cache_body(const std::shared_ptr<cache::Backend>& store,
                                             const std::string& key) {
     if (!impl_ || !impl_->app) return {};
-    return impl_->app->desktop_cache_read_body(store, key);
+    return impl_->app->cache_read_body(store, key);
 }
 
-#endif  // SBC_DESKTOP
+#endif  // SBC_CACHE_PROBE
 
 }  // namespace sbc::server

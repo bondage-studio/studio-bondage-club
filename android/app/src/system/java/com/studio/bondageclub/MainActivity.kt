@@ -14,6 +14,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -164,8 +165,30 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
     ): WebResourceResponse? {
         val uri = request.url
         val method = request.method ?: "GET"
+        val sameOrigin = isSameOrigin(uri.scheme, uri.host, uri.port)
 
-        if (isSameOrigin(uri.scheme, uri.host, uri.port)) {
+        // Direct cache serve (the analogue of the desktop CEF CacheResourceHandler):
+        // a confirmed fresh GET hit is served straight from the store, skipping the
+        // localhost loopback. Covers same-origin assets and the cross-origin
+        // /<full-url> loader. Misses/conditionals/non-GET fall through below.
+        if (method.equals("GET", true)) {
+            val target = if (sameOrigin) {
+                uri.encodedPath.orEmpty() + (uri.encodedQuery?.let { "?$it" } ?: "")
+            } else {
+                "/" + uri.toString()
+            }
+            val hit = try {
+                NativeCache.nativeProbe("GET", target, flattenHeaders(request.requestHeaders))
+            } catch (e: Exception) {
+                Log.w(TAG, "cache probe failed for $uri: ${e.message}")
+                null
+            }
+            if (hit != null) {
+                return cacheHitResponse(hit, sameOrigin)
+            }
+        }
+
+        if (sameOrigin) {
             return null
         }
         // WebResourceRequest carries no body, so only idempotent requests can be
@@ -180,6 +203,62 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
             Log.w(TAG, "proxy failed for $uri: ${e.message}")
             null
         }
+    }
+
+    // Flatten request headers into a [name, value, ...] array for nativeProbe,
+    // dropping Host (the loopback origin owns it) to match proxyThroughLocalServer.
+    private fun flattenHeaders(requestHeaders: Map<String, String>): Array<String> {
+        val out = ArrayList<String>(requestHeaders.size * 2)
+        for ((name, value) in requestHeaders) {
+            if (name.equals("Host", true)) continue
+            out.add(name)
+            out.add(value)
+        }
+        return out.toTypedArray()
+    }
+
+    // Build the response for a cache HIT. The body streams lazily off this thread
+    // (NativeCacheInputStream), so a large asset doesn't stall the intercept call.
+    private fun cacheHitResponse(hit: NativeCacheHit, sameOrigin: Boolean): WebResourceResponse {
+        val responseHeaders = LinkedHashMap<String, String>()
+        var contentType: String? = null
+        var i = 0
+        while (i + 1 < hit.headers.size) {
+            val name = hit.headers[i]
+            val value = hit.headers[i + 1]
+            responseHeaders[name] = value
+            if (name.equals("Content-Type", true)) contentType = value
+            i += 2
+        }
+        if (!sameOrigin) {
+            // WebView receives this as the target URL's response, so fetch() needs CORS.
+            responseHeaders["Access-Control-Allow-Origin"] = "*"
+        }
+        val (mime, encoding) = parseContentType(contentType)
+        return WebResourceResponse(
+            mime,
+            encoding,
+            hit.statusCode,
+            reasonPhrase(hit.statusCode),
+            responseHeaders,
+            NativeCacheInputStream(hit.handle),
+        )
+    }
+
+    // WebResourceResponse rejects a blank reason phrase; the value is advisory, so
+    // map the common codes and default to "OK".
+    private fun reasonPhrase(status: Int): String = when (status) {
+        200 -> "OK"
+        201 -> "Created"
+        202 -> "Accepted"
+        203 -> "Non-Authoritative Information"
+        204 -> "No Content"
+        301 -> "Moved Permanently"
+        302 -> "Found"
+        307 -> "Temporary Redirect"
+        308 -> "Permanent Redirect"
+        404 -> "Not Found"
+        else -> "OK"
     }
 
     private fun isSameOrigin(scheme: String?, host: String?, port: Int): Boolean {
@@ -239,5 +318,54 @@ private class LocalProxyWebViewClient(localOrigin: String) : WebViewClient() {
 
     private companion object {
         const val TAG = "StudioBC"
+    }
+}
+
+/**
+ * Serves a cache HIT's body to WebView. The body is read from the native store on
+ * the first [read] (which WebView performs on its own IO thread, off the intercept
+ * thread), and the native handle is released in [close]. WebView always closes the
+ * response stream it is handed, so the handle is freed exactly once.
+ */
+private class NativeCacheInputStream(private val handle: Long) : InputStream() {
+    private var body: ByteArray? = null
+    private var offset = 0
+    private var closed = false
+
+    private fun ensureBody(): ByteArray {
+        var b = body
+        if (b == null) {
+            b = NativeCache.nativeReadBody(handle)
+            body = b
+        }
+        return b
+    }
+
+    override fun read(): Int {
+        val b = ensureBody()
+        if (offset >= b.size) return -1
+        return b[offset++].toInt() and 0xff
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (len == 0) return 0
+        val src = ensureBody()
+        if (offset >= src.size) return -1
+        val n = minOf(len, src.size - offset)
+        System.arraycopy(src, offset, b, off, n)
+        offset += n
+        return n
+    }
+
+    override fun available(): Int {
+        val b = body ?: return 0
+        return b.size - offset
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        body = null
+        NativeCache.nativeFree(handle)
     }
 }

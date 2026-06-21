@@ -34,7 +34,6 @@
 #include "server/homepage.hpp"
 #include "server/remote_proxy.hpp"
 #include "server/rpc/connection.hpp"
-#include "server/userscript_defaults.hpp"
 
 namespace sbc::server {
 
@@ -314,11 +313,13 @@ App::App(config::Store& store, config::Config cfg, host::ProviderContext ctx)
     game_ = std::make_shared<gameserver::GameApp>(ctx_.io->executor(), *ctx_.blocking, game_dir,
                                                   cfg.game_server_settings);
     userscripts_ = UserscriptStore::open(config::userscript_storage_dir(cfg));
-    for (const auto& spec : builtin_userscripts()) userscripts_->ensure_builtin(spec);
-    // The host bridge + Sodium optimizations moved into the shell loader
-    // (web/src/optimizations); drop the now-defunct builtin from stores that
-    // seeded it before the move.
+    // The host bridge + Sodium optimizations and the BC Mod Manager loader moved
+    // into the shell loader (web/src/optimizations); the loader is now always
+    // injected and FUSAM is no longer shipped. Drop the now-defunct builtins from
+    // stores that seeded them before the move so they don't linger in the manager.
     userscripts_->remove("builtin-studio-host");
+    userscripts_->remove("builtin-bmm");
+    userscripts_->remove("builtin-fusam");
     auto provider = provider_for(cfg, ctx_);
     state_ = std::make_shared<State>(State{std::move(cfg), std::move(provider)});
     register_scopes();
@@ -1010,10 +1011,9 @@ ordered_json App::build_config_event(const ConfigChange& ch) {
     return evt;
 }
 
-#if defined(SBC_DESKTOP)
-std::optional<host::CacheHit> App::desktop_probe_cache(const std::string& method,
-                                                       const std::string& target,
-                                                       const HeaderMap& headers) {
+#if defined(SBC_CACHE_PROBE)
+std::optional<host::CacheHit> App::probe_cache(const std::string& method, const std::string& target,
+                                               const HeaderMap& headers) {
     if (method != "GET") return std::nullopt;
 
     // Reconstruct just enough of a parsed request for the route guards and the
@@ -1061,14 +1061,16 @@ std::optional<host::CacheHit> App::desktop_probe_cache(const std::string& method
     return probe->probe_cache_hit(req, nullptr);
 }
 
-std::string App::desktop_cache_read_body(const std::shared_ptr<cache::Backend>& store,
-                                         const std::string& key) {
+std::string App::cache_read_body(const std::shared_ptr<cache::Backend>& store,
+                                 const std::string& key) {
     auto state = snapshot();
     auto* probe = dynamic_cast<host::CacheProbeProvider*>(state->provider.get());
     if (probe == nullptr) return {};
     return probe->read_cache_body(store, key);
 }
+#endif  // SBC_CACHE_PROBE
 
+#if defined(SBC_DESKTOP)
 void App::apply_desktop_window_size(int width, int height) {
     config::Config cfg = snapshot()->cfg;
     if (!cfg.desktop.remember_window_size) return;
